@@ -25,7 +25,7 @@ pygame.font.init()
 # global variables
 
 col = 10  # 10 columns
-row = 20  # 20 rows
+row = 10  # 10 rows (changed from 20 to make the game faster)
 s_width = 800  # window width
 s_height = 750  # window height
 play_width = 300  # play window width; 300/10 = 30 width per block
@@ -451,6 +451,17 @@ def main(window):
     # Set paused flag to False to allow game to proceed immediately 
     paused = False
     game_lost = False
+    
+    # Track the last key press time to avoid processing duplicates
+    last_key_press = {
+        pygame.K_LEFT: 0,
+        pygame.K_RIGHT: 0,
+        pygame.K_UP: 0,
+        pygame.K_DOWN: 0,
+        pygame.K_q: 0,
+        pygame.K_p: 0
+    }
+    key_cooldown = 100  # milliseconds between key presses
 
     while run:
         # Debug tracking
@@ -492,10 +503,43 @@ def main(window):
                     # need to generate new piece
                     change_piece = True
 
+        # Handle key states (for AI control that might not generate events)
+        keys = pygame.key.get_pressed()
+        if not paused:
+            # Left key (with cooldown)
+            if keys[pygame.K_LEFT] and (current_time - last_key_press[pygame.K_LEFT]) > key_cooldown:
+                logger.debug("Tetris received LEFT key (from key state)")
+                current_piece.x -= 1
+                if not valid_space(current_piece, grid):
+                    current_piece.x += 1
+                last_key_press[pygame.K_LEFT] = current_time
+
+            # Right key (with cooldown)
+            if keys[pygame.K_RIGHT] and (current_time - last_key_press[pygame.K_RIGHT]) > key_cooldown:
+                logger.debug("Tetris received RIGHT key (from key state)")
+                current_piece.x += 1
+                if not valid_space(current_piece, grid):
+                    current_piece.x -= 1
+                last_key_press[pygame.K_RIGHT] = current_time
+
+            # Down key (with cooldown)
+            if keys[pygame.K_DOWN] and (current_time - last_key_press[pygame.K_DOWN]) > key_cooldown:
+                logger.debug("Tetris received DOWN key (from key state)")
+                current_piece.y += 1
+                if not valid_space(current_piece, grid):
+                    current_piece.y -= 1
+                last_key_press[pygame.K_DOWN] = current_time
+
+            # Up key (with cooldown)
+            if keys[pygame.K_UP] and (current_time - last_key_press[pygame.K_UP]) > key_cooldown:
+                logger.debug("Tetris received UP key (from key state)")
+                current_piece.rotation = (current_piece.rotation + 1) % len(current_piece.shape)
+                if not valid_space(current_piece, grid):
+                    current_piece.rotation = (current_piece.rotation - 1) % len(current_piece.shape)
+                last_key_press[pygame.K_UP] = current_time
+
         for event in pygame.event.get():
-            # Debug all events to see what's actually coming in
-            logger.debug(f"Event received: {event}")
-            
+            # Process events as they come
             if event.type == pygame.QUIT:
                 logger.info('Received pygame.QUIT event, setting run to False')
                 run = False
@@ -521,31 +565,39 @@ def main(window):
                 if paused:
                     continue  # Skip other key processing if paused
                 
+                # Only process a key if it's not on cooldown
+                if event.key in last_key_press and (current_time - last_key_press[event.key]) <= key_cooldown:
+                    continue  # Skip if key was recently pressed
+                    
                 if event.key == pygame.K_LEFT:
-                    logger.debug("Tetris received LEFT key")
+                    logger.debug("Tetris received LEFT key (from event)")
                     current_piece.x -= 1  # move x position left
                     if not valid_space(current_piece, grid):
                         current_piece.x += 1
+                    last_key_press[pygame.K_LEFT] = current_time
 
                 elif event.key == pygame.K_RIGHT:
-                    logger.debug("Tetris received RIGHT key")
+                    logger.debug("Tetris received RIGHT key (from event)")
                     current_piece.x += 1  # move x position right
                     if not valid_space(current_piece, grid):
                         current_piece.x -= 1
+                    last_key_press[pygame.K_RIGHT] = current_time
 
                 elif event.key == pygame.K_DOWN:
-                    logger.debug("Tetris received DOWN key")
+                    logger.debug("Tetris received DOWN key (from event)")
                     # move shape down
                     current_piece.y += 1
                     if not valid_space(current_piece, grid):
                         current_piece.y -= 1
+                    last_key_press[pygame.K_DOWN] = current_time
 
                 elif event.key == pygame.K_UP:
-                    logger.debug("Tetris received UP key")
+                    logger.debug("Tetris received UP key (from event)")
                     # rotate shape
                     current_piece.rotation = (current_piece.rotation + 1) % len(current_piece.shape)
                     if not valid_space(current_piece, grid):
                         current_piece.rotation = (current_piece.rotation - 1) % len(current_piece.shape)
+                    last_key_press[pygame.K_UP] = current_time
 
         if paused:
             # Display pause message

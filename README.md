@@ -13,7 +13,7 @@
   - [Super Mario Bros 1985](#super-mario-bros-1985-by-nintendo)
   - [2048](#2048)
   - [Tetris](#tetris)
-
+python -m games.tetris.tetris_agent
 ## Gallery
 
 🎥 Here you can see our AI gaming agents in action, demonstrating their gameplay strategies across different games!

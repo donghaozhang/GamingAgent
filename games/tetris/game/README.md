@@ -1,18 +1,34 @@
-# Tetris
-Tetris game made with the Pygame library in Python.
+# AI-Powered Tetris
 
+A classic Tetris game implementation using Pygame, enhanced with AI gameplay capabilities.
 
-## Installing
-Download the Python 3 installer package from the official website and install it, if not installed previously.
+## Features
 
-Run the following in the terminal to install the Pygame library
+- Classic Tetris gameplay mechanics
+- AI agent integration with multiple API providers support
+- Real-time game state analysis
+- Configurable AI response timing
+- Score tracking with high score system
+- Next piece preview
+- Dynamic difficulty adjustment
+- Debug logging system
+
+## Requirements
+
+- Python 3.x
+- Pygame
+- PyAutoGUI (for AI screen capture)
+- Additional requirements for AI integration:
+  - Anthropic API access
+  - OpenAI API access (optional)
+  - Google Gemini API access (optional)
+
+## Installation
+
+1. Install the required packages:
+```bash
+pip install pygame pyautogui python-dotenv numpy
 ```
-pip3 install pygame
-```
-
-
-Another alternative would be to import the contents of the repository in a PyCharm project.
-The Pygame library can be installed in a virtual environment of PyCharm using the steps mentioned [here](https://www.jetbrains.com/help/pycharm/installing-uninstalling-and-upgrading-packages.html).
 
 
 ## Running the application
