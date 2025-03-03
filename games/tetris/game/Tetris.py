@@ -406,7 +406,7 @@ def main(window):
     next_piece = get_shape()
     clock = pygame.time.Clock()
     fall_time = 0
-    fall_speed = 0.75  # 增加下落速度以匹配 AI 延迟
+    fall_speed = 0.75  # Fall speed in seconds
     level_time = 0
     score = 0
     last_score = get_max_score()
@@ -415,6 +415,20 @@ def main(window):
     # For AI control, we need to return information about the game state
     # Return the current piece position, grid state, and next piece
     game_info = None
+    
+    # Debug variables to trace execution
+    frame_count = 0
+    last_debug = pygame.time.get_ticks()
+    start_time = pygame.time.get_ticks()
+    
+    # Explicitly update the display and add a delay to ensure window visibility
+    window.fill((0, 0, 0))
+    font = safe_font(60)
+    label = font.render('Tetris Starting...', 1, (255, 255, 255))
+    window.blit(label, (top_left_x + play_width/2 - (label.get_width()/2), top_left_y + play_height/2 - label.get_height()/2))
+    pygame.display.update()
+    pygame.time.delay(2000)  # 2-second delay to ensure window is visible
+    logger.info("Initial delay complete, starting main game loop")
 
     # Monitor for Q key at game level
     try:
@@ -422,16 +436,37 @@ def main(window):
         def check_q_key():
             if keyboard.is_pressed('q'):
                 logger.info("Q key pressed at system level - terminating game")
-                pygame.quit()
-                os._exit(0)
+                return True
+            return False
     except ImportError:
         logger.warning("Keyboard module not available for global key monitoring")
         def check_q_key():
-            pass
+            return False
+
+    # Force wait for any key press to start dropping pieces
+    logger.info("Ready to start game. Pieces will start dropping.")
+    pygame.time.delay(1000)  # Add a 1-second delay before game starts
+
+    # Game is initialized with pieces ready to drop but paused initially
+    # Set paused flag to False to allow game to proceed immediately 
+    paused = False
+    game_lost = False
 
     while run:
+        # Debug tracking
+        frame_count += 1
+        current_time = pygame.time.get_ticks()
+        elapsed_time = (current_time - start_time) / 1000
+        
+        if current_time - last_debug > 5000:  # Log every 5 seconds
+            logger.info(f"Game running: frame {frame_count}, elapsed time: {elapsed_time:.1f}s")
+            last_debug = current_time
+            
         # Check for Q key at system level
-        check_q_key()
+        if check_q_key():
+            logger.info("Q key detected, exiting game")
+            run = False
+            break
         
         grid = create_grid(locked_positions)
         fall_time += clock.get_rawtime()
@@ -440,24 +475,22 @@ def main(window):
         clock.tick(30)  # Cap at 30 FPS
         
         # Game state update logic based on time
-        # Comment out debug prints and replace with logger.debug if needed
-        # logger.debug(f"Game state: fall_time={fall_time}, level_time={level_time}")
+        if not paused and not game_lost:
+            if level_time/1000 > 5:    # make the difficulty harder every 10 seconds
+                level_time = 0
+                if fall_speed > 0.15:   # until fall speed is 0.15
+                    fall_speed -= 0.005
+                    logger.debug(f"Speed updated: fall_speed={fall_speed}")
 
-        if level_time/1000 > 5:    # make the difficulty harder every 10 seconds
-            level_time = 0
-            if fall_speed > 0.15:   # until fall speed is 0.15
-                fall_speed -= 0.005
-                logger.debug(f"速度更新: fall_speed={fall_speed}")
-
-        if fall_time / 1000 > fall_speed:
-            fall_time = 0
-            current_piece.y += 1
-            if not valid_space(current_piece, grid) and current_piece.y > 0:
-                current_piece.y -= 1
-                # since only checking for down - either reached bottom or hit another piece
-                # need to lock the piece position
-                # need to generate new piece
-                change_piece = True
+            if fall_time / 1000 > fall_speed:
+                fall_time = 0
+                current_piece.y += 1
+                if not valid_space(current_piece, grid) and current_piece.y > 0:
+                    current_piece.y -= 1
+                    # since only checking for down - either reached bottom or hit another piece
+                    # need to lock the piece position
+                    # need to generate new piece
+                    change_piece = True
 
         for event in pygame.event.get():
             # Debug all events to see what's actually coming in
@@ -466,19 +499,27 @@ def main(window):
             if event.type == pygame.QUIT:
                 logger.info('Received pygame.QUIT event, setting run to False')
                 run = False
-                pygame.quit()
-                import sys
-                sys.exit()
+                # Don't quit pygame immediately, just exit the game loop
+                # This allows the caller to handle cleanup
+                break
                 
             elif event.type == pygame.KEYDOWN:
                 # Add Q key handling to quit game
                 if event.key == pygame.K_q:
                     logger.info("Q key pressed - quitting game")
                     run = False
-                    pygame.display.quit()
-                    pygame.quit()
-                    os._exit(0)  # Force immediate termination 
-                    return "QUIT"  # Return special "QUIT" signal just in case
+                    # Don't force exit, allow clean termination
+                    # Return special "QUIT" signal
+                    return "QUIT"
+                
+                # Handle pause with P key
+                if event.key == pygame.K_p:
+                    paused = not paused
+                    logger.info(f"Game {'paused' if paused else 'resumed'}")
+                    continue
+                
+                if paused:
+                    continue  # Skip other key processing if paused
                 
                 if event.key == pygame.K_LEFT:
                     logger.debug("Tetris received LEFT key")
@@ -502,9 +543,15 @@ def main(window):
                 elif event.key == pygame.K_UP:
                     logger.debug("Tetris received UP key")
                     # rotate shape
-                    current_piece.rotation = current_piece.rotation + 1 % len(current_piece.shape)
+                    current_piece.rotation = (current_piece.rotation + 1) % len(current_piece.shape)
                     if not valid_space(current_piece, grid):
-                        current_piece.rotation = current_piece.rotation - 1 % len(current_piece.shape)
+                        current_piece.rotation = (current_piece.rotation - 1) % len(current_piece.shape)
+
+        if paused:
+            # Display pause message
+            draw_text_middle('Game Paused - Press P to continue', 30, (255, 255, 255), window)
+            pygame.display.update()
+            continue
 
         piece_pos = convert_shape_format(current_piece)
 
@@ -521,46 +568,80 @@ def main(window):
             current_piece = next_piece
             next_piece = get_shape()
             change_piece = False
-            score += clear_rows(grid, locked_positions) * 10    # increment score by 10 for every row cleared
-            update_score(score)
+            
+            # Getting score by calling clear_rows method and adding it to 'score'
+            score += clear_rows(grid, locked_positions) * 10
+            
+            # Update the game info after rows are cleared and score is updated
+            game_info = {
+                'current_piece': {
+                    'x': current_piece.x,
+                    'y': current_piece.y,
+                    'shape': current_piece.shape,
+                    'rotation': current_piece.rotation,
+                    'color': current_piece.color
+                },
+                'next_piece': {
+                    'shape': next_piece.shape,
+                    'color': next_piece.color
+                },
+                'grid': grid,
+                'score': score
+            }
+            
+            # Check if game is lost
+            if check_lost(locked_positions):
+                logger.info(f"Game over! Final score: {score}")
+                draw_text_middle("Game Over! Score: " + str(score), 40, (255, 255, 255), window)
+                pygame.display.update()
+                pygame.time.delay(1500)
+                game_lost = True
+                
+                # Update high score if needed
+                if score > last_score:
+                    update_score(score)
+                    last_score = score
+                    logger.info(f"New high score: {score}")
+                
+                # Don't quit immediately, wait for Q key
+                draw_text_middle("Press Q to quit", 40, (255, 255, 255), window)
+                pygame.display.update()
+                continue
 
-            if last_score < score:
-                last_score = score
-
+        # Drawing everything to window
         draw_window(window, grid, score, last_score)
         draw_next_shape(next_piece, window)
         pygame.display.update()
 
-        if check_lost(locked_positions):
+        # We'll never reach this if the game is lost because of the continue
+        if game_lost:
+            # Let the caller handle this, but set all the flags
+            logger.info("Game is lost, exiting main loop")
             run = False
-            draw_text_middle('Game Over', 40, (255, 255, 255), window)
-            pygame.display.update()
-            pygame.time.delay(1500)  # Display game over for 1.5 seconds
-            return None  # Just return None to indicate game over, don't quit pygame
-            
-        # Create game state information for AI analysis
-        # This includes current piece position, shape, rotation, next piece, and grid state
-        game_info = {
-            'current_piece': {
-                'x': current_piece.x,
-                'y': current_piece.y,
-                'shape': current_piece.shape,
-                'rotation': current_piece.rotation,
-                'color': current_piece.color
-            },
-            'next_piece': {
-                'shape': next_piece.shape,
-                'color': next_piece.color
-            },
-            'grid': grid,
-            'score': score
-        }
-        
-        # Return the current game state to the agent
-        return game_info
+
+    # Update the game info one last time before returning
+    game_info = {
+        'current_piece': {
+            'x': current_piece.x,
+            'y': current_piece.y,
+            'shape': current_piece.shape,
+            'rotation': current_piece.rotation,
+            'color': current_piece.color
+        },
+        'next_piece': {
+            'shape': next_piece.shape,
+            'color': next_piece.color
+        },
+        'grid': grid,
+        'score': score
+    }
+    
+    # Return the current game state to the agent
+    return game_info
 
 
 def main_menu(window):
+    logger.info("Starting main menu")
     run = True
     while run:
         window.fill((0, 0, 0))
@@ -574,14 +655,23 @@ def main_menu(window):
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                logger.info("Quit event received in main menu")
                 run = False
-                return  # Return without quitting pygame
+                return None  # Return without quitting pygame
             
             if event.type == pygame.KEYDOWN:
+                logger.info(f"Key pressed in main menu: {pygame.key.name(event.key)}")
+                if event.key == pygame.K_q:
+                    logger.info("Q key pressed in main menu - exiting")
+                    return "QUIT"
+                    
+                logger.info("Starting main game from menu")
                 result = main(window)
+                logger.info(f"Main game returned: {result}")
                 return result  # Pass the return value from main
         
     # Don't quit pygame here, let the caller handle it
+    logger.info("Exiting main menu normally")
     return None
 
 

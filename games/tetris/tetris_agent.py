@@ -13,34 +13,67 @@ from queue import Queue, Empty
 import pygame
 from pygame.locals import KEYDOWN, K_LEFT, K_RIGHT, K_UP, K_DOWN, K_q
 import win32gui
+import pyautogui
+import keyboard
 
 # Set up logging configuration
 def setup_logging():
-    # Create logs directory if it doesn't exist
-    log_dir = os.path.join(os.path.dirname(__file__), "logs")
-    os.makedirs(log_dir, exist_ok=True)
-    
-    # Create a timestamped log file name
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(log_dir, f"tetris_agent_{timestamp}.log")
-    
-    # Configure logging with UTF-8 encoding to handle all characters
-    handlers = [
-        logging.FileHandler(log_file, encoding='utf-8'),
-        logging.StreamHandler()  # Console handler
-    ]
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=handlers
-    )
-    
-    # Get the logger for this module
-    logger = logging.getLogger("TetrisAgent")
-    logger.info(f"Logging initialized - writing to {log_file}")
-    
-    return logger
+    try:
+        # Create logs directory if it doesn't exist
+        log_dir = os.path.join(os.path.dirname(__file__), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # Create a timestamped log file name
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = os.path.join(log_dir, f"tetris_agent_{timestamp}.log")
+        
+        # Make sure we have write permissions to the log directory
+        test_file = os.path.join(log_dir, "test_write.tmp")
+        try:
+            with open(test_file, 'w') as f:
+                f.write("Test write permission")
+            os.remove(test_file)
+        except Exception as e:
+            print(f"WARNING: Cannot write to log directory: {str(e)}")
+            # Fall back to a different location, like the user's temp directory
+            import tempfile
+            log_dir = tempfile.gettempdir()
+            log_file = os.path.join(log_dir, f"tetris_agent_{timestamp}.log")
+            print(f"Using alternative log location: {log_file}")
+        
+        # Configure logging with UTF-8 encoding to handle all characters
+        handlers = [
+            logging.FileHandler(log_file, encoding='utf-8'),
+            logging.StreamHandler()  # Console handler
+        ]
+        
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=handlers
+        )
+        
+        # Get the logger for this module
+        logger = logging.getLogger("TetrisAgent")
+        logger.info(f"Logging initialized - writing to {log_file}")
+        
+        # Verify that log file is created
+        if os.path.exists(log_file):
+            logger.info("Log file created successfully")
+        else:
+            logger.warning(f"Log file not created at {log_file}")
+        
+        return logger
+    except Exception as e:
+        # If all else fails, set up a basic console logger
+        print(f"Failed to set up file logging: {str(e)}")
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        logger = logging.getLogger("TetrisAgent")
+        logger.warning(f"Using console-only logging due to error: {str(e)}")
+        return logger
 
 # Set up logging
 logger = setup_logging()
@@ -120,6 +153,7 @@ def ensure_game_files():
 def run_game():
     global game_running, game_state
     import pygame
+    import time
     
     try:
         # Initialize pygame properly
@@ -142,6 +176,7 @@ def run_game():
         else:
             # Let the safe_font function handle fallbacks
             Tetris.fontpath = None
+            logger.warning(f"Could not find font file: comicsans.ttf")
             logger.info("Using system font as fallback")
             
         # Create the window after proper initialization
@@ -150,19 +185,56 @@ def run_game():
         
         # Explicitly show the window and make sure it's visible
         pygame.display.update()
-        pygame.time.delay(500)  # Give the window some time to become visible
+        pygame.time.delay(1000)  # Give the window a full second to become visible
         logger.info("Game window opened, starting main game loop...")
         
-        # Start the main game directly (not through tetris_main)
+        # Set game_running to True to indicate the game is active
+        game_running = True
+        
+        # Start the main game directly
         try:
-            # Call main_menu to show the start screen and then enter the main game
-            Tetris.main_menu(win)
+            # Skip main_menu and directly start the game
+            result = Tetris.main(win)
             
-            # If main_menu returns (i.e., doesn't start the game)
-            # we can call main directly as a fallback
-            logger.info("Main menu exited without starting game. Starting game directly...")
-            Tetris.main(win)
-            
+            # Check if the game was quit using the Q key
+            if result == "QUIT":
+                logger.info("User quit the game with Q key")
+                game_running = False
+            else:
+                logger.info(f"Game completed with result: {result}")
+                
+                # After the game ends, keep the window open for a bit to allow AI to capture final state
+                logger.info("Game finished. Keeping window open for a moment...")
+                pygame.display.update()
+                
+                # Keep the window open until Q is pressed to quit
+                quit_wait = True
+                while quit_wait and game_running:
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            quit_wait = False
+                        elif event.type == pygame.KEYDOWN:
+                            if event.key == pygame.K_q:
+                                logger.info("Q key pressed after game end")
+                                quit_wait = False
+                    
+                    # Also check for system-level Q key press
+                    try:
+                        if keyboard.is_pressed('q'):
+                            logger.info("System-level Q key detected after game end")
+                            quit_wait = False
+                    except:
+                        pass
+                    
+                    # Update display and prevent CPU hogging
+                    win.fill((0, 0, 0))
+                    font = Tetris.safe_font(60)
+                    label = font.render('Game Over! Press Q to quit', 1, (255, 255, 255))
+                    win.blit(label, (Tetris.top_left_x + Tetris.play_width/2 - (label.get_width()/2), 
+                                   Tetris.top_left_y + Tetris.play_height/2 - label.get_height()/2))
+                    pygame.display.update()
+                    pygame.time.delay(100)  # Small delay to prevent CPU hogging
+                    
         except Exception as e:
             logger.error(f"Game crashed: {str(e)}")
             logger.error(traceback.format_exc())
@@ -174,6 +246,8 @@ def run_game():
         game_running = False
     finally:
         logger.info("Game loop ended")
+        # Set game_running to False to signal worker threads to exit
+        game_running = False
         # Clean up
         try:
             pygame.quit()
@@ -198,101 +272,89 @@ def main():
     
     # Make sure window is created before proceeding
     attempts = 0
+    window_found = False
+    tetris_window_name = 'Tetris'
+    
     while attempts < 10:  # Try for up to 10 seconds
         logger.info("Checking for Tetris window...")
-        hwnd = win32gui.FindWindow(None, 'Tetris')
+        hwnd = win32gui.FindWindow(None, tetris_window_name)
         if hwnd != 0:
             logger.info(f"Tetris window found! Window handle: {hwnd}")
+            window_found = True
             break
         time.sleep(1)
         attempts += 1
     
-    if attempts >= 10:
-        logger.error("Could not find Tetris window after multiple attempts. Workers may not be able to capture screenshots.")
+    if not window_found:
+        logger.warning("Could not find Tetris window after multiple attempts. Using region capture as fallback.")
     
     logger.info("Game initialized successfully, starting AI workers...")
     
     # Import worker_tetris here to avoid circular imports
     from games.tetris.workers import worker_tetris
     
-    # 原有的 AI 代理代码
+    # Parse command line arguments
     parser = argparse.ArgumentParser(
         description="Tetris gameplay agent with configurable concurrent workers."
     )
-    parser.add_argument("--api_provider", type=str, default="anthropic",
-                        help="API provider to use.")
-    parser.add_argument("--model_name", type=str, default="claude-3-7-sonnet-20250219",
-                        help="Model name.")
-    parser.add_argument("--concurrency_interval", type=float, default=1,
-                        help="Interval in seconds between workers.")
-    parser.add_argument("--api_response_latency_estimate", type=float, default=5,
-                        help="Estimated API response latency in seconds.")
-    parser.add_argument("-control_time", type=float, default=4,
-                        help=" orker control time.")
-    parser.add_argument("--policy", type=str, default="fixed", 
-                        choices=["fixed"],
-                        help="Worker policy")
-
+    parser.add_argument("--workers", type=int, default=1, help="Number of concurrent workers")
+    parser.add_argument("--model", type=str, default="claude-3-opus-20240229", help="Model name to use")
+    parser.add_argument("--provider", type=str, default="anthropic", help="API provider (anthropic, openai, or gemini)")
     args = parser.parse_args()
-
-    worker_span = args.control_time + args.concurrency_interval
-    num_threads = int(args.api_response_latency_estimate // worker_span)
     
-    if args.api_response_latency_estimate % worker_span != 0:
-        num_threads += 1
+    # Define a fallback screen region in case window capture fails
+    # This captures the center of the screen where Tetris is likely to be
+    screen_width, screen_height = pyautogui.size()
+    window_width = 800
+    window_height = 750
+    x = (screen_width - window_width) // 2
+    y = (screen_height - window_height) // 2
+    region = (x, y, window_width, window_height)
     
-    # Create an offset list
-    offsets = [i * (args.control_time + args.concurrency_interval) for i in range(num_threads)]
-
-    logger.info(f"Starting with {num_threads} threads using policy '{args.policy}'...")
-    logger.info(f"API Provider: {args.api_provider}, Model Name: {args.model_name}")
-
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-            futures = []
-            for i in range(num_threads):
-                if args.policy == "fixed":
-                    futures.append(executor.submit(
-                        worker_tetris, i, offsets[i], SYSTEM_PROMPT,
-                        args.api_provider, args.model_name, args.control_time
-                    ))
-                else:
-                    raise NotImplementedError(f"policy: {args.policy} not implemented.")
-
-            try:
-                # Monitor the game thread
-                while game_running and game_thread.is_alive():
-                    time.sleep(0.25)
-                    
-                    # Add keyboard listener for direct Q key termination
-                    check_for_quit()  # Check for Q key periodically
-                
-                if not game_thread.is_alive():
-                    logger.info("Game thread has stopped. Shutting down AI workers...")
-                    game_running = False
-                    
-            except KeyboardInterrupt:
-                logger.info("\nMain thread interrupted. Exiting all threads...")
-                game_running = False
-
-    finally:
-        # Ensure we set game_running to False on exit
-        game_running = False
+    # System prompt for the AI
+    system_prompt = "You are an expert Tetris player. Analyze the game state and determine the optimal next move."
+    
+    # Start worker threads
+    workers = []
+    for i in range(args.workers):
+        worker = threading.Thread(
+            target=worker_tetris,
+            args=(i, tetris_window_name, region, args.provider, args.model, system_prompt)
+        )
+        worker.daemon = True
+        worker.start()
+        workers.append(worker)
+        logger.info(f"Started worker {i} with {args.provider} {args.model}")
         
-        # Wait a moment for threads to clean up
-        time.sleep(1)
-        logger.info("Exiting main program.")
-
-def check_for_quit():
+    # Monitor for Q key press to terminate
     try:
-        import keyboard
-        if keyboard.is_pressed('q'):
-            logger.info("Q key pressed - force quit")
+        while game_running:
+            time.sleep(0.1)
+            try:
+                if keyboard.is_pressed('q'):
+                    logger.info("Q key pressed - terminating all threads")
+                    game_running = False
+                    # Signal any running pygame instances to quit
+                    pygame.event.post(pygame.event.Event(pygame.QUIT))
+                    break
+            except Exception as e:
+                # More detailed logging for keyboard issues
+                logger.debug(f"Error checking keyboard: {str(e)}")
+                pass  # Keyboard module might not be available
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user. Shutting down...")
+    finally:
+        game_running = False
+        # Try to force quit pygame
+        try:
             pygame.quit()
-            os._exit(0)
-    except ImportError:
-        # Keyboard module not available
-        pass
+        except:
+            pass
+            
+        logger.info("Waiting for worker threads to exit...")
+        for worker in workers:
+            worker.join(timeout=1.0)
+        logger.info("All workers terminated. Exiting.")
 
 if __name__ == "__main__":
     main()
