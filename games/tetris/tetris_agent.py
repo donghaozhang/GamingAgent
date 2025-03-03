@@ -15,6 +15,11 @@ from pygame.locals import KEYDOWN, K_LEFT, K_RIGHT, K_UP, K_DOWN, K_q
 import win32gui
 import pyautogui
 import keyboard
+import random
+import uuid
+
+# Set this to control how often API calls are made (in seconds)
+API_COOLDOWN_SECONDS = 10.0
 
 # Set up logging configuration
 def setup_logging():
@@ -86,8 +91,12 @@ SYSTEM_PROMPT = (
     "You are an expert AI agent specialized in playing Tetris gameplay, search for and execute optimal moves given each game state. Prioritize line clearing over speed."
 )
 
-# Update import path to use the game module
-from games.tetris.game.Tetris import main as tetris_main
+# Update import path to use the game module with relative import
+try:
+    from games.tetris.game.Tetris import main as tetris_main
+except ModuleNotFoundError:
+    # Fallback to relative import if running from tetris directory
+    from game.Tetris import main as tetris_main
 # Import worker_tetris later to avoid circular imports
 # from .workers import worker_tetris
 
@@ -151,6 +160,7 @@ def ensure_game_files():
     return highscore_path, font_paths
 
 def run_game():
+    """Run the Tetris game with the AI agent."""
     global game_running, game_state
     import pygame
     import time
@@ -165,7 +175,11 @@ def run_game():
         logger.debug(f"Font paths: {font_paths}")
         
         # Set paths in Tetris module
-        from games.tetris.game import Tetris
+        try:
+            from games.tetris.game import Tetris
+        except ModuleNotFoundError:
+            from game import Tetris
+        
         Tetris.filepath = highscore_path
         
         # Set the fontpath in Tetris module
@@ -323,7 +337,6 @@ def main():
         
         def get_response(self, prompt):
             logger.info("Mock provider generating random response")
-            import random
             responses = [
                 "I'll use pygame.K_LEFT to move the piece left.",
                 "I'll use pygame.K_RIGHT to move the piece right.",
