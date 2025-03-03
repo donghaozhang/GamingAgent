@@ -64,7 +64,12 @@ The speed it drops is at around ~0.75s/grid bock.
         while True:
             # Capture the screen
             screen_width, screen_height = pyautogui.size()
-            region = (0, 0, screen_width // 64 * 18, screen_height // 64 * 40)
+            # 调整截图区域以更好地捕捉游戏窗口
+            window_width = 800   # 游戏窗口宽度
+            window_height = 750  # 游戏窗口高度
+            x = (screen_width - window_width) // 2
+            y = (screen_height - window_height) // 2
+            region = (x, y, window_width, window_height)
             screenshot = pyautogui.screenshot(region=region)
 
             # Create a unique folder for this thread's cache

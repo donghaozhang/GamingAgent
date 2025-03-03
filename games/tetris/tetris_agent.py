@@ -2,18 +2,53 @@ import time
 import numpy as np
 import concurrent.futures
 import argparse
+import threading
+import os
+from dotenv import load_dotenv
 
-from games.tetris.workers import worker_tetris
+# 加载 .env 文件
+load_dotenv()
 
-system_prompt = (
+# Define system prompt as constant
+SYSTEM_PROMPT = (
     "You are an expert AI agent specialized in playing Tetris gameplay, search for and execute optimal moves given each game state. Prioritize line clearing over speed."
 )
 
+# Update import path to use the game module
+from .game.Tetris import main as tetris_main
+from .workers import worker_tetris
+
+def ensure_highscore():
+    # Get absolute path for highscore.txt
+    highscore_path = os.path.join(os.path.dirname(__file__), 'game', 'highscore.txt')
+    os.makedirs(os.path.dirname(highscore_path), exist_ok=True)
+    if not os.path.exists(highscore_path):
+        with open(highscore_path, 'w') as f:
+            f.write('0\n')
+    return highscore_path  # Return the path
+
+def run_game():
+    import pygame
+    # Get the highscore path and set it as a global variable
+    highscore_path = ensure_highscore()
+    # Modify the filepath in Tetris module
+    from .game import Tetris
+    Tetris.filepath = highscore_path
+    
+    win = pygame.display.set_mode((800, 750))
+    pygame.display.set_caption('Tetris')
+    tetris_main(win)
+
 def main():
-    """
-    Spawns a number of short-term and/or long-term Tetris workers based on user-defined parameters.
-    Each worker will analyze the Tetris board and choose moves accordingly.
-    """
+    # 启动游戏线程
+    game_thread = threading.Thread(target=run_game)
+    game_thread.daemon = True  # 设置为守护线程，这样主程序退出时游戏也会退出
+    game_thread.start()
+    
+    # 等待游戏窗口初始化
+    time.sleep(2)
+    
+    # 原有的 AI 代理代码
     parser = argparse.ArgumentParser(
         description="Tetris gameplay agent with configurable concurrent workers."
     )
@@ -49,7 +84,7 @@ def main():
         for i in range(num_threads):
             if args.policy == "fixed":
                 executor.submit(
-                    worker_tetris, i, offsets[i], system_prompt,
+                    worker_tetris, i, offsets[i], SYSTEM_PROMPT,  # Use SYSTEM_PROMPT instead of system_prompt
                     args.api_provider, args.model_name, args.control_time
                 )
             else:
