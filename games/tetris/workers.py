@@ -200,9 +200,9 @@ def worker_tetris(thread_id, offset, system_prompt, api_provider, model_name, pl
                 latency = end_time - start_time
                 all_response_time.append(latency)
 
-                logger.info(f"[Thread {thread_id}] Request latency: {latency:.2f}s")
+                logger.debug(f"[Thread {thread_id}] Request latency: {latency:.2f}s")
                 avg_latency = np.mean(all_response_time)
-                logger.info(f"[Thread {thread_id}] Average latency: {avg_latency:.2f}s\n")
+                logger.debug(f"[Thread {thread_id}] Average latency: {avg_latency:.2f}s\n")
 
                 # Extract and execute code
                 try:
@@ -300,16 +300,16 @@ def worker_tetris(thread_id, offset, system_prompt, api_provider, model_name, pl
                                 # This is a backup method in case the queue approach isn't working
                                 try:
                                     if key == pygame.K_LEFT:
-                                        logger.info("[Thread {}] Sending physical LEFT key".format(thread_id))
+                                        logger.debug("[Thread {}] Sending physical LEFT key".format(thread_id))
                                         keyboard.press_and_release('left')
                                     elif key == pygame.K_RIGHT:
-                                        logger.info("[Thread {}] Sending physical RIGHT key".format(thread_id))
+                                        logger.debug("[Thread {}] Sending physical RIGHT key".format(thread_id))
                                         keyboard.press_and_release('right')
                                     elif key == pygame.K_UP:
-                                        logger.info("[Thread {}] Sending physical UP key".format(thread_id))
+                                        logger.debug("[Thread {}] Sending physical UP key".format(thread_id))
                                         keyboard.press_and_release('up')
                                     elif key == pygame.K_DOWN:
-                                        logger.info("[Thread {}] Sending physical DOWN key".format(thread_id))
+                                        logger.debug("[Thread {}] Sending physical DOWN key".format(thread_id))
                                         keyboard.press_and_release('down')
                                 except Exception as e:
                                     logger.error(f"[Thread {thread_id}] Error sending physical key: {e}")

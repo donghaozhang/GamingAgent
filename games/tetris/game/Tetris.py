@@ -414,9 +414,12 @@ def main(window):
         grid = create_grid(locked_positions)
         fall_time += clock.get_rawtime()
         level_time += clock.get_rawtime()
-        # print(f"[DEBUG] 当前状态: fall_time={fall_time}, level_time={level_time}")
-
-        clock.tick()  # updates clock
+        # Clock tick updates
+        clock.tick(30)  # Cap at 30 FPS
+        
+        # Game state update logic based on time
+        # Comment out debug prints and replace with logger.debug if needed
+        # logger.debug(f"Game state: fall_time={fall_time}, level_time={level_time}")
 
         if level_time/1000 > 5:    # make the difficulty harder every 10 seconds
             level_time = 0

@@ -68,44 +68,44 @@ def ensure_highscore():
     return highscore_path  # Return the path
 
 def ensure_game_files():
-    game_dir = os.path.join(os.path.dirname(__file__), 'game')
-    print(f"[DEBUG] Game directory: {game_dir}")
+    # Get the absolute path for the game directory
+    game_dir = os.path.join(os.path.dirname(__file__), "game")
+    logger.debug(f"Game directory: {game_dir}")
     
     # Ensure highscore file exists
     highscore_path = os.path.join(game_dir, 'highscore.txt')
     os.makedirs(game_dir, exist_ok=True)
-    print(f"[DEBUG] Highscore path: {highscore_path}")
+    logger.debug(f"Highscore path: {highscore_path}")
     
     if not os.path.exists(highscore_path):
         with open(highscore_path, 'w') as f:
             f.write('0\n')
     
-    # Handle font files
-    font_files = ['arcade.TTF', 'mario.ttf']
-    font_paths = {}
+    # Check that the custom font is available
+    font_dir = os.path.join(game_dir, "font")
+    os.makedirs(font_dir, exist_ok=True)
     
-    for font in font_files:
-        font_path = os.path.join(game_dir, font)
-        print(f"[DEBUG] Checking font file: {font_path}")
+    # Font files to check
+    fonts = ["comicsans.ttf"]
+    
+    for font in fonts:
+        font_path = os.path.join(font_dir, font)
+        logger.debug(f"Checking font file: {font_path}")
         
         if not os.path.exists(font_path):
-            print(f"[DEBUG] Font file missing: {font}")
-            # Try to copy from tetris-pygame directory
-            src_path = os.path.join(os.path.dirname(__file__), '..', '..', 'tetris-pygame', font)
-            print(f"[DEBUG] Trying to copy from: {src_path}")
+            logger.debug(f"Font file missing: {font}")
+            # Try to copy from the tools directory
+            src_path = os.path.join(os.path.dirname(__file__), "..", "..", "tools", "assets", "fonts", font)
+            logger.debug(f"Trying to copy from: {src_path}")
             
             if os.path.exists(src_path):
                 import shutil
-                shutil.copy2(src_path, font_path)
-                print(f"[DEBUG] Successfully copied font file: {font}")
+                shutil.copy(src_path, font_path)
+                logger.debug(f"Successfully copied font file: {font}")
             else:
-                print(f"[WARNING] Could not find font file: {font}")
-                # Set default system font as fallback
-                font_path = None
-        
-        font_paths[font] = font_path
+                logger.warning(f"Could not find font file: {font}")
     
-    return highscore_path, font_paths
+    return highscore_path, font_dir
 
 def run_game():
     global game_running, game_state  # 在函数开始处声明全局变量
@@ -117,14 +117,13 @@ def run_game():
         logger.info("Initializing game...")
         
         # Get paths
-        highscore_path, font_paths = ensure_game_files()
-        logger.debug(f"Font paths: {font_paths}")
+        highscore_path, font_dir = ensure_game_files()
+        logger.debug(f"Font paths: {font_dir}")
         
         # Set paths in Tetris module
         from .game import Tetris
         Tetris.filepath = highscore_path
-        Tetris.fontpath = font_paths['arcade.TTF']
-        Tetris.fontpath_mario = font_paths['mario.ttf']
+        Tetris.fontpath = os.path.join(font_dir, "comicsans.ttf")
         
         # Create the window after proper initialization
         win = pygame.display.set_mode((800, 750))
