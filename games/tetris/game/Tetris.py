@@ -1,5 +1,10 @@
 import random
 import pygame
+import logging
+import os
+
+# Get the logger
+logger = logging.getLogger("TetrisAgent.Game")
 
 """
 10 x 20 grid
@@ -369,7 +374,7 @@ def get_max_score():
 
 
 def main(window):
-    print("[DEBUG] 游戏初始化开始")
+    logger.info("游戏初始化开始")
     locked_positions = {}
     create_grid(locked_positions)
 
@@ -383,13 +388,33 @@ def main(window):
     level_time = 0
     score = 0
     last_score = get_max_score()
-    print(f"[DEBUG] 初始化完成: fall_speed={fall_speed}, score={score}, last_score={last_score}")
+    logger.info(f"初始化完成: fall_speed={fall_speed}, score={score}, last_score={last_score}")
+    
+    # For AI control, we need to return information about the game state
+    # Return the current piece position, grid state, and next piece
+    game_info = None
+
+    # Monitor for Q key at game level
+    try:
+        import keyboard
+        def check_q_key():
+            if keyboard.is_pressed('q'):
+                logger.info("Q key pressed at system level - terminating game")
+                pygame.quit()
+                os._exit(0)
+    except ImportError:
+        logger.warning("Keyboard module not available for global key monitoring")
+        def check_q_key():
+            pass
 
     while run:
+        # Check for Q key at system level
+        check_q_key()
+        
         grid = create_grid(locked_positions)
         fall_time += clock.get_rawtime()
         level_time += clock.get_rawtime()
-        print(f"[DEBUG] 当前状态: fall_time={fall_time}, level_time={level_time}")
+        # print(f"[DEBUG] 当前状态: fall_time={fall_time}, level_time={level_time}")
 
         clock.tick()  # updates clock
 
@@ -397,7 +422,7 @@ def main(window):
             level_time = 0
             if fall_speed > 0.15:   # until fall speed is 0.15
                 fall_speed -= 0.005
-                print(f"[DEBUG] 速度更新: fall_speed={fall_speed}")
+                logger.debug(f"速度更新: fall_speed={fall_speed}")
 
         if fall_time / 1000 > fall_speed:
             fall_time = 0
@@ -410,29 +435,47 @@ def main(window):
                 change_piece = True
 
         for event in pygame.event.get():
+            # Debug all events to see what's actually coming in
+            logger.debug(f"Event received: {event}")
+            
             if event.type == pygame.QUIT:
+                logger.info('Received pygame.QUIT event, setting run to False')
                 run = False
-                pygame.display.quit()
-                quit()
-
+                pygame.quit()
+                import sys
+                sys.exit()
+                
             elif event.type == pygame.KEYDOWN:
+                # Add Q key handling to quit game
+                if event.key == pygame.K_q:
+                    logger.info("Q key pressed - quitting game")
+                    run = False
+                    pygame.display.quit()
+                    pygame.quit()
+                    os._exit(0)  # Force immediate termination 
+                    return "QUIT"  # Return special "QUIT" signal just in case
+                
                 if event.key == pygame.K_LEFT:
+                    logger.debug("Tetris received LEFT key")
                     current_piece.x -= 1  # move x position left
                     if not valid_space(current_piece, grid):
                         current_piece.x += 1
 
                 elif event.key == pygame.K_RIGHT:
+                    logger.debug("Tetris received RIGHT key")
                     current_piece.x += 1  # move x position right
                     if not valid_space(current_piece, grid):
                         current_piece.x -= 1
 
                 elif event.key == pygame.K_DOWN:
+                    logger.debug("Tetris received DOWN key")
                     # move shape down
                     current_piece.y += 1
                     if not valid_space(current_piece, grid):
                         current_piece.y -= 1
 
                 elif event.key == pygame.K_UP:
+                    logger.debug("Tetris received UP key")
                     # rotate shape
                     current_piece.rotation = current_piece.rotation + 1 % len(current_piece.shape)
                     if not valid_space(current_piece, grid):
@@ -465,11 +508,32 @@ def main(window):
 
         if check_lost(locked_positions):
             run = False
-
-    draw_text_middle('You Lost', 40, (255, 255, 255), window)
-    pygame.display.update()
-    pygame.time.delay(2000)  # wait for 2 seconds
-    pygame.quit()
+            draw_text_middle('You Lost', 40, (255, 255, 255), window)
+            pygame.display.update()
+            pygame.time.delay(2000)  # wait for 2 seconds
+            # Don't quit pygame here, just return None to indicate game over
+            return None
+            
+        # Create game state information for AI analysis
+        # This includes current piece position, shape, rotation, next piece, and grid state
+        game_info = {
+            'current_piece': {
+                'x': current_piece.x,
+                'y': current_piece.y,
+                'shape': current_piece.shape,
+                'rotation': current_piece.rotation,
+                'color': current_piece.color
+            },
+            'next_piece': {
+                'shape': next_piece.shape,
+                'color': next_piece.color
+            },
+            'grid': grid,
+            'score': score
+        }
+        
+        # Return the current game state to the agent
+        return game_info
 
 
 def main_menu(window):
