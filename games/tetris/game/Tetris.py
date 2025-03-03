@@ -1,5 +1,5 @@
-import random
 import pygame
+import random
 import logging
 import os
 
@@ -37,9 +37,29 @@ top_left_y = s_height - play_height - 50
 
 # Initialize global paths
 filepath = "./highscore.txt"
-fontpath = "./comicsans.ttf"  # Default font
+fontpath = None  # Default to None - will use system font
 # We'll use the same font for all purposes to simplify
-fontpath_mario = fontpath
+fontpath_mario = None
+
+# Helper function to safely get a font with fallback
+def safe_font(size, font_path=None):
+    """Get a font with proper fallback to system fonts if needed"""
+    try:
+        # Try the specified font path first (if provided)
+        if font_path and os.path.exists(font_path):
+            return pygame.font.Font(font_path, size)
+        
+        # If no font path or it doesn't exist, try the global fontpath
+        elif fontpath and os.path.exists(fontpath):
+            return pygame.font.Font(fontpath, size)
+        
+        # If all else fails, use system font
+        else:
+            return pygame.font.SysFont('comicsans', size)
+    except Exception as e:
+        # Log the error and use system font
+        logger.warning(f"Font loading error: {e}")
+        return pygame.font.SysFont('comicsans', size)
 
 # shapes formats
 
@@ -234,11 +254,11 @@ def get_shape():
 
 # draws text in the middle
 def draw_text_middle(text, size, color, surface):
-    # Remove bold and italic parameters as they're not supported
-    font = pygame.font.Font(fontpath, size)
+    # Use our safe font helper
+    font = safe_font(size)
     label = font.render(text, 1, color)
-
-    surface.blit(label, (top_left_x + play_width/2 - (label.get_width()/2), top_left_y + play_height/2 - (label.get_height()/2)))
+    
+    surface.blit(label, (top_left_x + play_width/2 - (label.get_width() / 2), top_left_y + play_height/2 - label.get_height()/2))
 
     # draws the lines of the grid for the game
 def draw_grid(surface):
@@ -310,35 +330,31 @@ def draw_next_shape(piece, surface):
 
 # draws the content of the window
 def draw_window(surface, grid, score=0, last_score=0):
-    surface.fill((0, 0, 0))  # fill the surface with black
-
+    surface.fill((0, 0, 0))  # fill with black
+    
+    # Tetris Title
     pygame.font.init()  # initialise font
-    # Use the global fontpath variable and provide fallback
-    try:
-        font = pygame.font.Font(fontpath, 65)
-    except:
-        # Fallback to system font if custom font fails
-        font = pygame.font.SysFont('comicsans', 65)
-    label = font.render('TETRIS', 1, (255, 255, 255))  # initialise 'Tetris' text with white
-
-    surface.blit(label, ((top_left_x + play_width / 2) - (label.get_width() / 2), 30))  # put surface on the center of the window
-
-    # current score
-    font = pygame.font.Font(fontpath, 30)
-    label = font.render('SCORE   ' + str(score) , 1, (255, 255, 255))
-
-    start_x = top_left_x + play_width + 50
-    start_y = top_left_y + (play_height / 2 - 100)
-
-    surface.blit(label, (start_x, start_y + 200))
-
-    # last score
-    label_hi = font.render('HIGHSCORE   ' + str(last_score), 1, (255, 255, 255))
-
-    start_x_hi = top_left_x - 240
-    start_y_hi = top_left_y + 200
-
-    surface.blit(label_hi, (start_x_hi + 20, start_y_hi + 200))
+    font = safe_font(65)
+    label = font.render('TETRIS', 1, (255, 255, 255))
+    surface.blit(label, (top_left_x + play_width / 2 - (label.get_width() / 2), 30))
+    
+    # Current Score
+    font = safe_font(30)
+    label = font.render('Score: ' + str(score), 1, (255, 255, 255))
+    
+    sx = top_left_x + play_width + 50
+    sy = top_left_y + play_height/2 - 100
+    
+    surface.blit(label, (sx + 20, sy + 160))
+    
+    # Last Score
+    font = safe_font(30)
+    label = font.render('High Score: ' + str(last_score), 1, (255, 255, 255))
+    
+    sx = top_left_x - 240
+    sy = top_left_y + 200
+    
+    surface.blit(label, (sx + 20, sy + 160))
 
     # draw content of the grid
     for i in range(row):
@@ -548,15 +564,22 @@ def main(window):
 def main_menu(window):
     run = True
     while run:
-        draw_text_middle('Press any key to begin', 50, (255, 255, 255), window)
+        window.fill((0, 0, 0))
+        
+        # Use our safe font helper
+        font = safe_font(60)
+        label = font.render('Press any key to begin', 1, (255, 255, 255))
+        
+        window.blit(label, (top_left_x + play_width/2 - (label.get_width()/2), top_left_y + play_height/2 - label.get_height()/2))
         pygame.display.update()
-
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
-            elif event.type == pygame.KEYDOWN:
+            
+            if event.type == pygame.KEYDOWN:
                 main(window)
-
+        
     pygame.quit()
 
 

@@ -133,15 +133,15 @@ def run_game():
         Tetris.filepath = highscore_path
         
         # Set the fontpath in Tetris module
-        if font_paths.get("comicsans.ttf"):
-            Tetris.fontpath = font_paths["comicsans.ttf"]
+        custom_font = font_paths.get("comicsans.ttf")
+        if custom_font and os.path.exists(custom_font):
+            Tetris.fontpath = custom_font
+            logger.info(f"Using custom font at {Tetris.fontpath}")
         else:
-            # If we couldn't find the font, use a relative path and let Pygame handle the fallback
-            Tetris.fontpath = "comicsans.ttf"
+            # Let the safe_font function handle fallbacks
+            Tetris.fontpath = None
+            logger.info("Using system font as fallback")
             
-        # Remove the mario font reference since we're not using it
-        Tetris.fontpath_mario = Tetris.fontpath
-        
         # Create the window after proper initialization
         win = pygame.display.set_mode((800, 750))
         pygame.display.set_caption('Tetris')  # Important: This title must match what we use in the screenshot capture
