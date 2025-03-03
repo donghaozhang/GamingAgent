@@ -67,7 +67,19 @@ def ensure_game_files():
     
     return highscore_path, font_paths
 
+# 添加在文件开头的导入部分
+from queue import Queue
+import pygame.event
+from pygame.locals import *
+
+# 添加全局变量
+game_state = Queue()
+game_running = True
+# 将全局变量声明移到文件顶部
+game_running = True
+game_state = Queue()
 def run_game():
+    global game_running, game_state  # 在函数开始处声明全局变量
     import pygame
     print("[DEBUG] Initializing game...")
     
@@ -81,22 +93,33 @@ def run_game():
     Tetris.fontpath = font_paths['arcade.TTF']
     Tetris.fontpath_mario = font_paths['mario.ttf']
     
-    # Print current working directory
-    print(f"[DEBUG] Current working directory: {os.getcwd()}")
-    print(f"[DEBUG] Game module location: {os.path.abspath(Tetris.__file__)}")
-    
     win = pygame.display.set_mode((800, 750))
     pygame.display.set_caption('Tetris')
     
     try:
-        tetris_main(win)
+        # 修改游戏主循环，降低速度
+        clock = pygame.time.Clock()
+        while game_running:
+            # 限制帧率为30fps
+            clock.tick(30)
+            
+            # 获取当前游戏状态
+            current_state = tetris_main(win)  # 移除 return_state 参数
+            if current_state:  # 只有在有返回值时才放入队列
+                game_state.put(current_state)
+            
+            # 处理 AI 控制事件
+            while not game_state.empty():
+                action = game_state.get()
+                if action:
+                    pygame.event.post(pygame.event.Event(KEYDOWN, {'key': action}))
+            
     except Exception as e:
         print(f"[ERROR] Game crashed: {str(e)}")
         import traceback
         traceback.print_exc()
-        # Signal other threads to stop
-        global game_running
-        game_running = False
+    finally:
+        game_running = False  # 移除 global 声明，因为已经在函数开始处声明过了
 def main():
     # 启动游戏线程
     game_thread = threading.Thread(target=run_game)
