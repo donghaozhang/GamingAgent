@@ -268,8 +268,28 @@ def run_game():
         except:
             pass
 
-def main():
-    global game_running
+def main(args=None):
+    """Main function to start the Tetris agent."""
+    global game_running, terminate_event, screenshot_queue
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Run a Tetris AI agent')
+    parser.add_argument('--workers', type=int, default=1, help='Number of worker threads to spawn')
+    parser.add_argument('--model', type=str, default='gpt-3.5-turbo', help='Model to use for AI')
+    parser.add_argument('--provider', type=str, default='openai', help='Provider to use (openai, anthropic, gemini)')
+    parser.add_argument('--playback', action='store_true', help='Run in playback mode (no AI calls)')
+    parser.add_argument('--cooldown', type=float, default=10.0, help='Cooldown between API calls in seconds')
+    
+    # Parse arguments
+    if args is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(args)
+    
+    # Update the API cooldown setting
+    global API_COOLDOWN_SECONDS
+    API_COOLDOWN_SECONDS = args.cooldown
+    logger.info(f"API cooldown set to {API_COOLDOWN_SECONDS} seconds")
     
     # Start the game thread first
     game_thread = threading.Thread(target=run_game)
@@ -306,25 +326,6 @@ def main():
     
     # Import worker_tetris here to avoid circular imports
     from games.tetris.workers import worker_tetris
-    
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(
-        description="Tetris gameplay agent with configurable concurrent workers."
-    )
-    parser.add_argument("--workers", type=int, default=1, help="Number of concurrent workers")
-    parser.add_argument("--model", type=str, default="claude-3-7-sonnet-20250219", help="Model name to use")
-    parser.add_argument("--provider", type=str, default="anthropic", help="API provider (anthropic, openai, or gemini)")
-    parser.add_argument("--playback", action="store_true", help="Run in playback mode (no AI calls)")
-    args = parser.parse_args()
-    
-    # Define a fallback screen region in case window capture fails
-    # This captures the center of the screen where Tetris is likely to be
-    screen_width, screen_height = pyautogui.size()
-    window_width = 800
-    window_height = 750
-    x = (screen_width - window_width) // 2
-    y = (screen_height - window_height) // 2
-    region = (x, y, window_width, window_height)
     
     # System prompt for the AI
     system_prompt = "You are an expert Tetris player. Analyze the game state and determine the optimal next move."
