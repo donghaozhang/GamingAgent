@@ -298,8 +298,9 @@ def main():
         description="Tetris gameplay agent with configurable concurrent workers."
     )
     parser.add_argument("--workers", type=int, default=1, help="Number of concurrent workers")
-    parser.add_argument("--model", type=str, default="claude-3-opus-20240229", help="Model name to use")
+    parser.add_argument("--model", type=str, default="claude-3-7-sonnet-20250219", help="Model name to use")
     parser.add_argument("--provider", type=str, default="anthropic", help="API provider (anthropic, openai, or gemini)")
+    parser.add_argument("--playback", action="store_true", help="Run in playback mode (no AI calls)")
     args = parser.parse_args()
     
     # Define a fallback screen region in case window capture fails
@@ -314,12 +315,76 @@ def main():
     # System prompt for the AI
     system_prompt = "You are an expert Tetris player. Analyze the game state and determine the optimal next move."
     
+    # Create a simple mock model provider if the real modules aren't available
+    class MockProvider:
+        def __init__(self, model=None):
+            self.model = model
+            logger.info(f"Created Mock Provider with model {model}")
+        
+        def get_response(self, prompt):
+            logger.info("Mock provider generating random response")
+            import random
+            responses = [
+                "I'll use pygame.K_LEFT to move the piece left.",
+                "I'll use pygame.K_RIGHT to move the piece right.",
+                "I'll use pygame.K_UP to rotate the piece.",
+                "I'll use pygame.K_DOWN to move the piece down faster."
+            ]
+            return random.choice(responses)
+
+    # Create model provider object based on command line args
+    model_provider = None
+    if not args.playback:
+        try:
+            if args.provider.lower() == "anthropic":
+                try:
+                    from model_providers.anthropic_provider import AnthropicProvider
+                    model_provider = AnthropicProvider(model=args.model)
+                except ImportError:
+                    logger.warning("Could not import AnthropicProvider, using mock provider instead")
+                    model_provider = MockProvider(model=args.model)
+                logger.info(f"Created Anthropic provider with model {args.model}")
+            elif args.provider.lower() == "openai":
+                try:
+                    from model_providers.openai_provider import OpenAIProvider
+                    model_provider = OpenAIProvider(model=args.model)
+                except ImportError:
+                    logger.warning("Could not import OpenAIProvider, using mock provider instead")
+                    model_provider = MockProvider(model=args.model)
+                logger.info(f"Created OpenAI provider with model {args.model}")
+            elif args.provider.lower() == "gemini":
+                try:
+                    from model_providers.gemini_provider import GeminiProvider
+                    model_provider = GeminiProvider(model=args.model)
+                except ImportError:
+                    logger.warning("Could not import GeminiProvider, using mock provider instead")
+                    model_provider = MockProvider(model=args.model)
+                logger.info(f"Created Gemini provider with model {args.model}")
+            else:
+                logger.warning(f"Unknown provider {args.provider}. Using mock provider.")
+                model_provider = MockProvider(model=args.model)
+        except Exception as e:
+            logger.error(f"Error creating model provider: {e}")
+            logger.error(traceback.format_exc())
+            logger.warning("Running in playback mode due to provider initialization error")
+    else:
+        logger.info("Running in playback mode (no AI calls)")
+    
     # Start worker threads
     workers = []
+    stop_events = []
+    result_queues = []
+    
     for i in range(args.workers):
+        # Create a result queue and stop event for this worker
+        result_queue = Queue()
+        stop_event = threading.Event()
+        result_queues.append(result_queue)
+        stop_events.append(stop_event)
+        
         worker = threading.Thread(
             target=worker_tetris,
-            args=(i, tetris_window_name, region, args.provider, args.model, system_prompt)
+            args=(result_queue, stop_event, i, model_provider, system_prompt, args.playback)
         )
         worker.daemon = True
         worker.start()
@@ -352,6 +417,10 @@ def main():
             pass
             
         logger.info("Waiting for worker threads to exit...")
+        # Signal all workers to stop
+        for stop_event in stop_events:
+            stop_event.set()
+        
         for worker in workers:
             worker.join(timeout=1.0)
         logger.info("All workers terminated. Exiting.")
