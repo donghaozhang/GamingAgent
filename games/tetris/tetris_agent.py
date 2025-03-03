@@ -22,20 +22,22 @@ def setup_logging():
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = os.path.join(log_dir, f"tetris_agent_{timestamp}.log")
     
-    # Configure the root logger
+    # Configure logging with UTF-8 encoding to handle all characters
+    handlers = [
+        logging.FileHandler(log_file, encoding='utf-8'),
+        logging.StreamHandler()  # Console handler
+    ]
+    
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            # File handler that writes to the log file
-            logging.FileHandler(log_file, mode='w'),
-            # Console handler that prints to stdout
-            logging.StreamHandler()
-        ]
+        handlers=handlers
     )
     
+    # Get the logger for this module
     logger = logging.getLogger("TetrisAgent")
     logger.info(f"Logging initialized - writing to {log_file}")
+    
     return logger
 
 # Initialize logger
@@ -72,7 +74,7 @@ def ensure_game_files():
     game_dir = os.path.join(os.path.dirname(__file__), "game")
     logger.debug(f"Game directory: {game_dir}")
     
-    # Ensure highscore file exists
+    # Ensure highscore.txt exists
     highscore_path = os.path.join(game_dir, 'highscore.txt')
     os.makedirs(game_dir, exist_ok=True)
     logger.debug(f"Highscore path: {highscore_path}")
@@ -85,10 +87,11 @@ def ensure_game_files():
     font_dir = os.path.join(game_dir, "font")
     os.makedirs(font_dir, exist_ok=True)
     
-    # Font files to check
-    fonts = ["comicsans.ttf"]
+    # Font files to check - ensure we have at least comicsans.ttf
+    required_fonts = ["comicsans.ttf"]
+    font_paths = {}
     
-    for font in fonts:
+    for font in required_fonts:
         font_path = os.path.join(font_dir, font)
         logger.debug(f"Checking font file: {font_path}")
         
@@ -102,10 +105,15 @@ def ensure_game_files():
                 import shutil
                 shutil.copy(src_path, font_path)
                 logger.debug(f"Successfully copied font file: {font}")
+                font_paths[font] = font_path
             else:
                 logger.warning(f"Could not find font file: {font}")
+                # Use system font as fallback
+                font_paths[font] = None
+        else:
+            font_paths[font] = font_path
     
-    return highscore_path, font_dir
+    return highscore_path, font_paths
 
 def run_game():
     global game_running, game_state  # 在函数开始处声明全局变量
@@ -117,13 +125,22 @@ def run_game():
         logger.info("Initializing game...")
         
         # Get paths
-        highscore_path, font_dir = ensure_game_files()
-        logger.debug(f"Font paths: {font_dir}")
+        highscore_path, font_paths = ensure_game_files()
+        logger.debug(f"Font paths: {font_paths}")
         
         # Set paths in Tetris module
-        from .game import Tetris
+        from games.tetris.game import Tetris
         Tetris.filepath = highscore_path
-        Tetris.fontpath = os.path.join(font_dir, "comicsans.ttf")
+        
+        # Set the fontpath in Tetris module
+        if font_paths.get("comicsans.ttf"):
+            Tetris.fontpath = font_paths["comicsans.ttf"]
+        else:
+            # If we couldn't find the font, use a relative path and let Pygame handle the fallback
+            Tetris.fontpath = "comicsans.ttf"
+            
+        # Remove the mario font reference since we're not using it
+        Tetris.fontpath_mario = Tetris.fontpath
         
         # Create the window after proper initialization
         win = pygame.display.set_mode((800, 750))

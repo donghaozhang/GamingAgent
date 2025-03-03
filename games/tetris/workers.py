@@ -124,7 +124,7 @@ game_running = True
 game_state = Queue()
 
 def worker_tetris(thread_id, offset, system_prompt, api_provider, model_name, plan_seconds):
-    logger.info(f"[Worker {thread_id}] 初始化中...")
+    logger.info(f"[Worker {thread_id}] Initializing...")
     global game_running, game_state
     
     try:

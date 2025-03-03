@@ -35,9 +35,11 @@ block_size = 30  # size of block
 top_left_x = (s_width - play_width) // 2
 top_left_y = s_height - play_height - 50
 
-filepath = './highscore.txt'
-fontpath = './arcade.ttf'
-fontpath_mario = './mario.ttf'
+# Initialize global paths
+filepath = "./highscore.txt"
+fontpath = "./comicsans.ttf"  # Default font
+# We'll use the same font for all purposes to simplify
+fontpath_mario = fontpath
 
 # shapes formats
 
@@ -311,8 +313,12 @@ def draw_window(surface, grid, score=0, last_score=0):
     surface.fill((0, 0, 0))  # fill the surface with black
 
     pygame.font.init()  # initialise font
-    # Remove bold parameter as it's not supported
-    font = pygame.font.Font(fontpath_mario, 65)
+    # Use the global fontpath variable and provide fallback
+    try:
+        font = pygame.font.Font(fontpath, 65)
+    except:
+        # Fallback to system font if custom font fails
+        font = pygame.font.SysFont('comicsans', 65)
     label = font.render('TETRIS', 1, (255, 255, 255))  # initialise 'Tetris' text with white
 
     surface.blit(label, ((top_left_x + play_width / 2) - (label.get_width() / 2), 30))  # put surface on the center of the window
@@ -374,7 +380,7 @@ def get_max_score():
 
 
 def main(window):
-    logger.info("游戏初始化开始")
+    logger.info("Game initialization started")
     locked_positions = {}
     create_grid(locked_positions)
 
@@ -388,7 +394,7 @@ def main(window):
     level_time = 0
     score = 0
     last_score = get_max_score()
-    logger.info(f"初始化完成: fall_speed={fall_speed}, score={score}, last_score={last_score}")
+    logger.info(f"Initialization complete: fall_speed={fall_speed}, score={score}, last_score={last_score}")
     
     # For AI control, we need to return information about the game state
     # Return the current piece position, grid state, and next piece
