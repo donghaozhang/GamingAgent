@@ -533,11 +533,10 @@ def main(window):
 
         if check_lost(locked_positions):
             run = False
-            draw_text_middle('You Lost', 40, (255, 255, 255), window)
+            draw_text_middle('Game Over', 40, (255, 255, 255), window)
             pygame.display.update()
-            pygame.time.delay(2000)  # wait for 2 seconds
-            # Don't quit pygame here, just return None to indicate game over
-            return None
+            pygame.time.delay(1500)  # Display game over for 1.5 seconds
+            return None  # Just return None to indicate game over, don't quit pygame
             
         # Create game state information for AI analysis
         # This includes current piece position, shape, rotation, next piece, and grid state
@@ -576,15 +575,20 @@ def main_menu(window):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
+                return  # Return without quitting pygame
             
             if event.type == pygame.KEYDOWN:
-                main(window)
+                result = main(window)
+                return result  # Pass the return value from main
         
-    pygame.quit()
+    # Don't quit pygame here, let the caller handle it
+    return None
 
 
 if __name__ == '__main__':
+    # This is only used when running this file directly
     win = pygame.display.set_mode((s_width, s_height))
     pygame.display.set_caption('Tetris')
 
     main_menu(win)  # start game
+    pygame.quit()   # Quit pygame only when running as standalone

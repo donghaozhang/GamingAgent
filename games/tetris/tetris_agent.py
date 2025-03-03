@@ -1,4 +1,5 @@
 import time
+import traceback
 import numpy as np
 import concurrent.futures
 import argparse
@@ -11,6 +12,7 @@ from dotenv import load_dotenv
 from queue import Queue, Empty
 import pygame
 from pygame.locals import KEYDOWN, K_LEFT, K_RIGHT, K_UP, K_DOWN, K_q
+import win32gui
 
 # Set up logging configuration
 def setup_logging():
@@ -40,7 +42,7 @@ def setup_logging():
     
     return logger
 
-# Initialize logger
+# Set up logging
 logger = setup_logging()
 
 # 加载 .env 文件
@@ -116,7 +118,7 @@ def ensure_game_files():
     return highscore_path, font_paths
 
 def run_game():
-    global game_running, game_state  # 在函数开始处声明全局变量
+    global game_running, game_state
     import pygame
     
     try:
@@ -146,120 +148,67 @@ def run_game():
         win = pygame.display.set_mode((800, 750))
         pygame.display.set_caption('Tetris')  # Important: This title must match what we use in the screenshot capture
         
-        # 修改游戏主循环，降低速度
-        clock = pygame.time.Clock()
-        last_update = time.time()
-        update_interval = 1.0  # 增加状态更新间隔到1秒
-        last_debug_time = time.time()
-        debug_interval = 5  # 每5秒输出一次调试信息
+        # Explicitly show the window and make sure it's visible
+        pygame.display.update()
+        pygame.time.delay(500)  # Give the window some time to become visible
+        logger.info("Game window opened, starting main game loop...")
         
-        while game_running:
-            # Process events first to prevent event queue overflow
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    logger.info("Window closed. Terminating game.")
-                    game_running = False
-                    break
-                
-                # Add direct Q key handling here to catch it early
-                if event.type == KEYDOWN and event.key == K_q:
-                    logger.info("Q key detected in main event loop. Terminating game.")
-                    game_running = False
-                    # Force termination - this is more reliable
-                    pygame.quit()
-                    return
-                    
-            if not game_running:
-                break
-                
-            clock.tick(30)  # 限制帧率为30fps
+        # Start the main game directly (not through tetris_main)
+        try:
+            # Call main_menu to show the start screen and then enter the main game
+            Tetris.main_menu(win)
             
-            current_time = time.time()
-            if current_time - last_update >= update_interval:
-                # Pass a reference to the game state queue directly to the game
-                current_state = tetris_main(win)
-                
-                # Check if we got the QUIT signal from the Q key
-                if current_state == "QUIT":
-                    logger.info("Received QUIT signal from game (Q key pressed), terminating all processes...")
-                    game_running = False
-                    pygame.quit()
-                    # Exit the function immediately for more reliable termination
-                    return
-                
-                # Debug print to verify what we're getting back from tetris_main
-                if current_state:
-                    logger.debug(f"Got game state: {current_state}")
-                    if current_time - last_debug_time >= debug_interval:
-                        last_debug_time = current_time
-                    # Put the game state in the queue for the worker to analyze
-                    # This was intended for the worker to analyze the state, not for control
-                    game_state.put(current_state)
-                last_update = current_time
+            # If main_menu returns (i.e., doesn't start the game)
+            # we can call main directly as a fallback
+            logger.info("Main menu exited without starting game. Starting game directly...")
+            Tetris.main(win)
             
-            # 处理 AI 控制事件
-            try:
-                action = game_state.get_nowait()  # 非阻塞获取
-                if action:
-                    logger.info(f"Executing AI action: {action}")
-                    # Ensure action is one of the valid key constants
-                    if action in [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN]:
-                        # Instead of posting an event, we'll simulate a key press directly
-                        # Using both methods for redundancy
-                        
-                        # Method 1: Post event with correct attributes
-                        key_event = pygame.event.Event(KEYDOWN, key=action, mod=0)
-                        pygame.event.post(key_event)
-                        
-                        # Method 2: Modify key state directly (more reliable in some cases)
-                        keys = pygame.key.get_pressed()
-                        
-                        # Since we can't modify the tuple directly, we'll create a new event
-                        # that simulates a key press in the next frame
-                        if action == pygame.K_LEFT:
-                            logger.debug("Sending direct LEFT key press")
-                            pygame.event.post(pygame.event.Event(KEYDOWN, key=pygame.K_LEFT))
-                        elif action == pygame.K_RIGHT:
-                            logger.debug("Sending direct RIGHT key press")
-                            pygame.event.post(pygame.event.Event(KEYDOWN, key=pygame.K_RIGHT))
-                        elif action == pygame.K_UP:
-                            logger.debug("Sending direct UP key press")
-                            pygame.event.post(pygame.event.Event(KEYDOWN, key=pygame.K_UP))
-                        elif action == pygame.K_DOWN:
-                            logger.debug("Sending direct DOWN key press")
-                            pygame.event.post(pygame.event.Event(KEYDOWN, key=pygame.K_DOWN))
-                    else:
-                        logger.warning(f"Invalid key constant received: {action}")
-            except Empty:  # 使用正确的 Empty 异常
-                pass  # 队列为空时继续
+        except Exception as e:
+            logger.error(f"Game crashed: {str(e)}")
+            logger.error(traceback.format_exc())
+            game_running = False
     
     except Exception as e:
-        logger.error(f"Game crashed: {str(e)}")
-        import traceback
+        logger.error(f"Error initializing game: {str(e)}")
         logger.error(traceback.format_exc())
-    finally:
-        # Proper cleanup of pygame
         game_running = False
+    finally:
+        logger.info("Game loop ended")
+        # Clean up
         try:
             pygame.quit()
         except:
-            pass  # Already quit or not initialized
+            pass
 
 def main():
     global game_running
     
-    # 启动游戏线程
+    # Start the game thread first
     game_thread = threading.Thread(target=run_game)
-    game_thread.daemon = True  # 设置为守护线程，这样主程序退出时游戏也会退出
+    game_thread.daemon = True
     game_thread.start()
     
-    # 等待游戏窗口初始化
+    # Wait for game window to initialize
     logger.info("Waiting for game window to initialize...")
-    time.sleep(3)  # 增加等待时间以确保pygame完全初始化
+    time.sleep(3)  # Increased wait time to ensure pygame initializes
     
     if not game_running:
         logger.error("Game failed to initialize. Exiting...")
         return
+    
+    # Make sure window is created before proceeding
+    attempts = 0
+    while attempts < 10:  # Try for up to 10 seconds
+        logger.info("Checking for Tetris window...")
+        hwnd = win32gui.FindWindow(None, 'Tetris')
+        if hwnd != 0:
+            logger.info(f"Tetris window found! Window handle: {hwnd}")
+            break
+        time.sleep(1)
+        attempts += 1
+    
+    if attempts >= 10:
+        logger.error("Could not find Tetris window after multiple attempts. Workers may not be able to capture screenshots.")
     
     logger.info("Game initialized successfully, starting AI workers...")
     
