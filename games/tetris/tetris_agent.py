@@ -27,18 +27,76 @@ def ensure_highscore():
             f.write('0\n')
     return highscore_path  # Return the path
 
+def ensure_game_files():
+    game_dir = os.path.join(os.path.dirname(__file__), 'game')
+    print(f"[DEBUG] Game directory: {game_dir}")
+    
+    # Ensure highscore file exists
+    highscore_path = os.path.join(game_dir, 'highscore.txt')
+    os.makedirs(game_dir, exist_ok=True)
+    print(f"[DEBUG] Highscore path: {highscore_path}")
+    
+    if not os.path.exists(highscore_path):
+        with open(highscore_path, 'w') as f:
+            f.write('0\n')
+    
+    # Handle font files
+    font_files = ['arcade.TTF', 'mario.ttf']
+    font_paths = {}
+    
+    for font in font_files:
+        font_path = os.path.join(game_dir, font)
+        print(f"[DEBUG] Checking font file: {font_path}")
+        
+        if not os.path.exists(font_path):
+            print(f"[DEBUG] Font file missing: {font}")
+            # Try to copy from tetris-pygame directory
+            src_path = os.path.join(os.path.dirname(__file__), '..', '..', 'tetris-pygame', font)
+            print(f"[DEBUG] Trying to copy from: {src_path}")
+            
+            if os.path.exists(src_path):
+                import shutil
+                shutil.copy2(src_path, font_path)
+                print(f"[DEBUG] Successfully copied font file: {font}")
+            else:
+                print(f"[WARNING] Could not find font file: {font}")
+                # Set default system font as fallback
+                font_path = None
+        
+        font_paths[font] = font_path
+    
+    return highscore_path, font_paths
+
 def run_game():
     import pygame
-    # Get the highscore path and set it as a global variable
-    highscore_path = ensure_highscore()
-    # Modify the filepath in Tetris module
+    print("[DEBUG] Initializing game...")
+    
+    # Get paths
+    highscore_path, font_paths = ensure_game_files()
+    print(f"[DEBUG] Font paths: {font_paths}")
+    
+    # Set paths in Tetris module
     from .game import Tetris
     Tetris.filepath = highscore_path
+    Tetris.fontpath = font_paths['arcade.TTF']
+    Tetris.fontpath_mario = font_paths['mario.ttf']
+    
+    # Print current working directory
+    print(f"[DEBUG] Current working directory: {os.getcwd()}")
+    print(f"[DEBUG] Game module location: {os.path.abspath(Tetris.__file__)}")
     
     win = pygame.display.set_mode((800, 750))
     pygame.display.set_caption('Tetris')
-    tetris_main(win)
-
+    
+    try:
+        tetris_main(win)
+    except Exception as e:
+        print(f"[ERROR] Game crashed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Signal other threads to stop
+        global game_running
+        game_running = False
 def main():
     # 启动游戏线程
     game_thread = threading.Thread(target=run_game)
