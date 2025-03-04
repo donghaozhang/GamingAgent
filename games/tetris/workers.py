@@ -6,6 +6,22 @@ import numpy as np
 from tools.utils import encode_image, log_output, extract_python_code
 from tools.serving.api_providers import anthropic_completion, openai_completion, gemini_completion
 
+# Add this function to find Tetris window directly
+def find_tetris_window():
+    """
+    Uses pyautogui.getWindowsWithTitle to find the Tetris window
+    Returns the window region as (left, top, width, height) or None if not found
+    """
+    # Try to find the Tetris window
+    windows = pyautogui.getWindowsWithTitle("Tetris")
+    
+    if windows:
+        window = windows[0]  # Get the first window with "Tetris" in the title
+        print(f"Found Tetris window: {window.title} at {window.left}, {window.top}, {window.width}, {window.height}")
+        return (window.left, window.top, window.width, window.height)
+    
+    return None
+
 def worker_tetris(
     thread_id,
     offset,
@@ -18,7 +34,7 @@ def worker_tetris(
     A single Tetris worker that plans moves for 'plan_seconds'.
     1) Sleeps 'offset' seconds before starting (to stagger starts).
     2) Continuously:
-        - Captures a screenshot
+        - Captures a screenshot of the Tetris window
         - Calls the LLM with a Tetris prompt that includes 'plan_seconds'
         - Extracts the Python code from the LLM output
         - Executes the code with `exec()`
@@ -62,10 +78,19 @@ The speed it drops is at around ~0.75s/grid bock.
 
     try:
         while True:
-            # Capture the screen
-            screen_width, screen_height = pyautogui.size()
-            region = (0, 0, screen_width // 64 * 18, screen_height // 64 * 40)
-            screenshot = pyautogui.screenshot(region=region)
+            # Try to capture the Tetris window specifically
+            tetris_region = find_tetris_window()
+            
+            if tetris_region:
+                # Use the detected Tetris window region
+                screenshot = pyautogui.screenshot(region=tetris_region)
+                print(f"[Thread {thread_id}] Capturing Tetris window")
+            else:
+                # Fallback to the default method
+                print(f"[Thread {thread_id}] No Tetris window found. Using default region.")
+                screen_width, screen_height = pyautogui.size()
+                region = (0, 0, screen_width // 64 * 18, screen_height // 64 * 40)
+                screenshot = pyautogui.screenshot(region=region)
 
             # Create a unique folder for this thread's cache
             thread_folder = f"cache/tetris/thread_{thread_id}"
