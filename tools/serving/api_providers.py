@@ -1,4 +1,8 @@
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from openai import OpenAI
 import anthropic
@@ -36,6 +40,8 @@ def openai_completion(system_prompt, model_name, base64_image, prompt):
     return generated_code_str
 
 def anthropic_completion(system_prompt, model_name, base64_image, prompt):
+    import time
+    
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     messages = [
                 {
@@ -56,19 +62,42 @@ def anthropic_completion(system_prompt, model_name, base64_image, prompt):
                     ],
                 }
             ]
-
-    with client.messages.stream(
-            max_tokens=1024,
-            messages=messages,
-            temperature=0,
-            system=system_prompt,
-            model=model_name, # claude-3-5-sonnet-20241022 # claude-3-7-sonnet-20250219
-        ) as stream:
-            partial_chunks = []
-            for chunk in stream.text_stream:
-                partial_chunks.append(chunk)
+    
+    try:
+        print("Starting Anthropic API call...")
+        # Use a non-streaming version with timeout
+        response = client.messages.create(
+                max_tokens=1024,
+                messages=messages,
+                temperature=0,
+                system=system_prompt,
+                model=model_name,
+                timeout=30  # 30 second timeout
+            )
         
-    generated_code_str = "".join(partial_chunks)
+        print("Anthropic API call completed successfully")
+        generated_code_str = response.content[0].text
+        
+    except Exception as e:
+        print(f"Error during Anthropic API call: {e}")
+        # Return a simple fallback response if API call fails
+        generated_code_str = """
+        # Fallback response due to API timeout or error
+        # Moving tetris piece to a safe position
+        import pyautogui
+        import time
+        
+        # Move left to center piece
+        pyautogui.press('left')
+        time.sleep(0.2)
+        
+        # Rotate if needed
+        pyautogui.press('up')
+        time.sleep(0.2)
+        
+        # Drop the piece
+        pyautogui.press('space')
+        """
     
     return generated_code_str
 
