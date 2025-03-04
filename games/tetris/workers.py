@@ -29,6 +29,7 @@ def worker_tetris(
     api_provider,
     model_name,
     plan_seconds,
+    stop_event=None,
 ):
     """
     A single Tetris worker that plans moves for 'plan_seconds'.
@@ -38,6 +39,7 @@ def worker_tetris(
         - Calls the LLM with a Tetris prompt that includes 'plan_seconds'
         - Extracts the Python code from the LLM output
         - Executes the code with `exec()`
+    3) Stops gracefully when stop_event is set
     """
     all_response_time = []
 
@@ -78,6 +80,11 @@ The speed it drops is at around ~0.75s/grid bock.
 
     try:
         while True:
+            # Check if we should stop
+            if stop_event and stop_event.is_set():
+                print(f"[Thread {thread_id}] Stop event received, terminating.")
+                break
+                
             # Try to capture the Tetris window specifically
             tetris_region = find_tetris_window()
             
@@ -86,10 +93,11 @@ The speed it drops is at around ~0.75s/grid bock.
                 screenshot = pyautogui.screenshot(region=tetris_region)
                 print(f"[Thread {thread_id}] Capturing Tetris window")
             else:
-                # Fallback to the default method
+                # Fallback to the default method with adjusted region for better Tetris game capture
                 print(f"[Thread {thread_id}] No Tetris window found. Using default region.")
                 screen_width, screen_height = pyautogui.size()
-                region = (0, 0, screen_width // 64 * 18, screen_height // 64 * 40)
+                # Adjusted region to better capture the Tetris gameplay area
+                region = (0, 0, screen_width // 32 * 9, screen_height // 32 * 20)
                 screenshot = pyautogui.screenshot(region=region)
 
             # Create a unique folder for this thread's cache
@@ -99,6 +107,11 @@ The speed it drops is at around ~0.75s/grid bock.
             screenshot_path = os.path.join(thread_folder, "screenshot.png")
             screenshot.save(screenshot_path)
 
+            # Check again if we should stop before making API call
+            if stop_event and stop_event.is_set():
+                print(f"[Thread {thread_id}] Stop event received, terminating.")
+                break
+                
             # Encode the screenshot
             base64_image = encode_image(screenshot_path)
             print(f"[Thread {thread_id}] Screenshot encoded, preparing to call API...")
@@ -133,6 +146,11 @@ The speed it drops is at around ~0.75s/grid bock.
             log_output(thread_id, f"[Thread {thread_id}] Python code to be executed:\n{clean_code}\n", "tetris")
             print(f"[Thread {thread_id}] Python code to be executed:\n{clean_code}\n")
 
+            # Check again before executing code
+            if stop_event and stop_event.is_set():
+                print(f"[Thread {thread_id}] Stop event received, terminating.")
+                break
+                
             try:
                 print(f"[Thread {thread_id}] Executing Python code...")
                 exec(clean_code)
