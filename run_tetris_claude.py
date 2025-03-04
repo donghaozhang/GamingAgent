@@ -1,8 +1,8 @@
 """
-Tetris Runner Script with Gemini 1.5 Flash
+Tetris Runner Script with Claude 3.7 Sonnet
 
-This script makes it easy to run the Tetris agent with Google's Gemini 1.5 Flash model,
-which provides extremely fast responses and is optimized for real-time gameplay.
+This script makes it easy to run the Tetris agent with Anthropic's Claude 3.7 Sonnet model,
+which provides high-quality responses and excellent reasoning capabilities for gameplay.
 """
 
 import sys
@@ -11,7 +11,7 @@ import subprocess
 import os
 
 def main():
-    parser = argparse.ArgumentParser(description='Run Tetris with Gemini 1.5 Flash')
+    parser = argparse.ArgumentParser(description='Run Tetris with Claude 3.7 Sonnet')
     parser.add_argument('--cooldown', type=float, default=0.0, 
                         help='API cooldown in seconds (default: 0 - no cooldown)')
     
@@ -20,12 +20,12 @@ def main():
     # Construct command
     cmd = [
         "python", "-m", "games.tetris.tetris_agent",
-        "--provider", "gemini",
-        "--model", "gemini-1.5-pro",
+        "--provider", "anthropic",
+        "--model", "claude-3-7-sonnet-20250219",
         "--cooldown", str(args.cooldown)
     ]
     
-    print(f"Starting Tetris with Gemini 1.5 Flash (cooldown: {args.cooldown}s)")
+    print(f"Starting Tetris with Claude 3.7 Sonnet (cooldown: {args.cooldown}s)")
     print("Press Ctrl+C to stop the game")
     
     try:

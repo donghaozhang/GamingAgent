@@ -478,7 +478,11 @@ def worker_tetris(result_queue, stop_event, worker_id, model_provider, tetris_pr
                     # COOLDOWN DISABLED: Always make a new API call regardless of time passed
                     # Make an actual API call
                     logger.info(f"Making new API call (cooldown disabled)")
-                    response = model_provider.get_response(prompt)
+                    # Encode the screenshot image
+                    base64_image = encode_image(screenshot_path)
+                    logger.info(f"Encoded screenshot image from {screenshot_path}")
+                    # Pass the encoded image to the model provider
+                    response = model_provider.get_response(prompt, base64_image)
                     last_api_call_time = current_time
                     cached_response = response  # Update cache for tracking purposes
                     cached_state_hash = current_state_hash  # Update hash for tracking purposes

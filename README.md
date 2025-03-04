@@ -13,7 +13,8 @@
   - [Super Mario Bros 1985](#super-mario-bros-1985-by-nintendo)
   - [2048](#2048)
   - [Tetris](#tetris)
-python -m games.tetris.tetris_agent
+- [Recent Improvements](#recent-improvements)
+
 ## Gallery
 
 🎥 Here you can see our AI gaming agents in action, demonstrating their gameplay strategies across different games!
@@ -101,6 +102,10 @@ Currently we support gaming agents based on the following models:
   - claude-3-7-sonnet-20250219
 - Gemini:
   - gemini-1.5-pro
+  - gemini-1.5-flash (for Tetris)
+- OpenRouter:
+  - anthropic/claude-3-7-sonnet:thinking (for enhanced reasoning)
+  - Any other model available on OpenRouter
 
 Set your API keys with:
 
@@ -108,9 +113,17 @@ Set your API keys with:
 export OPENAI_API_KEY={YOUR_OPENAI_API_KEY}
 export ANTHROPIC_API_KEY={YOUR_ANTHROPIC_API_KEY}
 export GEMINI_API_KEY={your_GEMINI_API_KEY}
+export OPENROUTER_API_KEY={your_OPENROUTER_API_KEY}
 ```
 
 ⚠️ Due to concurrency, deploying the agent with high-end models (and a large number of workers) could incur higher cost.
+
+#### Model-Specific Considerations
+
+- **Claude Models**: Require proper base64 image encoding with the correct content format.
+- **Gemini Models**: The Flash variant provides faster responses for real-time gaming.
+- **OpenAI Models**: Offer good performance across most games with varying latency/quality trade-offs.
+- **OpenRouter Integration**: Access to specialized model variants like Claude 3.7 Sonnet (thinking) for enhanced reasoning capabilities.
 
 ## Games
 
@@ -215,7 +228,7 @@ cd $YOUR_WORKPLACE/Python-Tetris-Game-Pygame
 python main.py
 ```
 
-⚠️ In your Tetris implementation, Modify game speed to accomodate for AI gaming agent latency. For example, in the provided implementation, navigate to `main.py`, line 23: change event time to 500~600ms.
+⚠️ In your Tetris implementation, Modify game speed to accommodate for AI gaming agent latency. For example, in the provided implementation, navigate to `main.py`, line 23: change event time to 500~600ms.
 
 You should be able to see:
 
@@ -225,11 +238,47 @@ You should be able to see:
 
 2. Adjust Agent's Field of Vision. Either full screen your game or adjust screen region in `/games/tetris/workers.py`, line 67 to capture only the gameplay window. For example, in `Python-Tetris-Game-Pygame` with MacBook Pro, change the line to `region = (0, 0, screen_width // 32 * 9, screen_height // 32 * 20)`.
 
-3. Open another screen, launch your agent in terminal with
+3. Open another screen, launch your agent in terminal with one of the following commands:
+
 ```
+# General Tetris agent (works with any supported model)
 cd $YOUR_WORKPLACE/GamingAgent
-python games/tetris/tetris_agent.py
+python games/tetris/tetris_agent.py --provider anthropic --model claude-3-7-sonnet-20250219
+
+# Claude-specific Tetris agent (optimized for Claude 3.7 Sonnet)
+cd $YOUR_WORKPLACE/GamingAgent
+python run_tetris_claude.py
 ```
+
+#### Model-Specific Scripts
+
+We provide specialized scripts for specific models to simplify running the game:
+
+- **Claude 3.7 Sonnet**: Use `run_tetris_claude.py` for optimized performance with Claude 3.7
+  ```
+  python run_tetris_claude.py [--cooldown 0.0]
+  ```
+
+- **Gemini**: Use `run_tetris_gemini.py` for Gemini 1.5 Flash
+  ```
+  python run_tetris_gemini.py [--cooldown 0.0]
+  ```
+
+- **OpenRouter (Claude 3.7 thinking)**: Use `run_tetris_openrouter.py` for enhanced reasoning with Claude via OpenRouter
+  ```
+  python run_tetris_openrouter.py [--cooldown 0.0] [--model anthropic/claude-3-7-sonnet:thinking]
+  ```
+
+These scripts automatically configure the appropriate model settings and provide improved error handling.
+
+#### Under the Hood: AI Vision Integration
+
+The Tetris agent has been enhanced with improved vision capabilities:
+
+- **Screenshot Processing**: The agent captures the Tetris game screen, encodes it to base64, and sends it to the AI model
+- **Image Validation**: A robust validation system checks image integrity before sending to the model
+- **Diagnostic Information**: The system provides detailed logging about image quality and dimensions
+- **Fallback Responses**: If the AI model cannot process the image, the agent provides randomized fallback moves
 
 #### Other command options
 ```
@@ -242,8 +291,38 @@ python games/tetris/tetris_agent.py
 --api_response_latency_estimate: Estimated API response latency in seconds.
 
 --policy: 'fixed', only one policy is supported for now.
+
+--cooldown: API cooldown in seconds (for specialized scripts).
 ```
 
 #### Build your own policy
 
 Currently we find single-worker agent is able to make meaningful progress in the Tetris game. If the gaming agent spawns multiple independent workers, they don't coordinate well. We will work on improving the agent and gaming policies. We also welcome your thoughts and contributions.
+
+## Recent Improvements
+
+### Enhanced Image Processing
+
+We've recently improved the image processing pipeline with:
+
+- **Robust Base64 Handling**: Properly handles images with or without data URL prefixes
+- **Diagnostic Logging**: Provides detailed information about image dimensions, format, and content
+- **Debug Image Saving**: Optionally saves processed images for troubleshooting
+- **Model-Specific Optimizations**: Customized image handling for each AI provider (OpenAI, Anthropic, Gemini)
+
+### Model Provider Updates
+
+- **Claude Integration**: Updated to work properly with Claude 3.7 Sonnet
+- **Gemini Integration**: Fixed model name from "gemini-2.0-flash" to "gemini-1.5-flash" 
+- **Error Handling**: Improved with randomized fallback responses when API calls fail
+- **OpenRouter Integration**: Added support for Claude 3.7 Sonnet (thinking variant) and other models via OpenRouter
+
+### Convenience Scripts
+
+Added specialized runner scripts:
+
+- `run_tetris_claude.py`: Optimized for Claude 3.7 Sonnet
+- `run_tetris_gemini.py`: Configured for Gemini 1.5 Flash
+- `run_tetris_openrouter.py`: Runs Tetris with Claude 3.7 Sonnet (thinking variant) via OpenRouter
+
+These improvements ensure that AI models can properly "see" the game state and provide intelligent moves.

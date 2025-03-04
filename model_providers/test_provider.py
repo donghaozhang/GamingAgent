@@ -1,6 +1,7 @@
 from anthropic_provider import AnthropicProvider
 from openai_provider import OpenAIProvider
 from gemini_provider import GeminiProvider
+from openrouter_provider import OpenRouterProvider
 
 def test_anthropic_provider():
     """
@@ -67,6 +68,38 @@ def test_gemini_provider():
         print(f"Error testing GeminiProvider: {e}")
         return False
 
+def test_openrouter_provider():
+    """
+    Simple test for the OpenRouterProvider to verify it can connect to the API.
+    Tests with the Claude 3.7 Sonnet (thinking) model via OpenRouter.
+    """
+    try:
+        # Create the provider
+        provider = OpenRouterProvider(model="anthropic/claude-3.7-sonnet")
+        print(f"Successfully created provider with model: {provider.model}")
+        
+        # Test a simple response
+        test_prompt = "What model are you? Please specify your full name and capabilities."
+        print(f"Sending test prompt to OpenRouter: {test_prompt}")
+        
+        print("Calling OpenRouter API...")
+        response = provider.get_response(test_prompt)
+        print("\n--- FULL RESPONSE FROM OPENROUTER ---")
+        print(response)
+        print("--- END OF RESPONSE ---\n")
+        
+        # Print the first 100 characters of the response for a quick view
+        if response:
+            preview = response[:100] + "..." if len(response) > 100 else response
+            print(f"Response preview: {preview}")
+        else:
+            print("No response received from OpenRouter")
+        
+        return True
+    except Exception as e:
+        print(f"Error testing OpenRouterProvider: {e}")
+        return False
+
 if __name__ == "__main__":
     # Test Anthropic Provider
     print("Testing AnthropicProvider...")
@@ -93,4 +126,13 @@ if __name__ == "__main__":
     if gemini_success:
         print("Gemini test completed successfully!")
     else:
-        print("Gemini test failed.") 
+        print("Gemini test failed.")
+        
+    # Test OpenRouter Provider
+    print("\nTesting OpenRouterProvider...")
+    openrouter_success = test_openrouter_provider()
+    
+    if openrouter_success:
+        print("OpenRouter test completed successfully!")
+    else:
+        print("OpenRouter test failed.") 

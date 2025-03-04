@@ -35,13 +35,13 @@ class GeminiProvider:
         # Get the model
         self.genai_model = genai.GenerativeModel(self.model)
         
-    def get_response(self, prompt, image_data=None, image_path=None):
+    def get_response(self, prompt, base64_image=None, image_path=None):
         """
         Get a response from the Gemini model.
         
         Args:
             prompt (str): The text prompt to send to the model.
-            image_data (bytes, optional): PNG image data if available.
+            base64_image (str, optional): Base64-encoded image data.
             image_path (str, optional): Path to image file if available.
             
         Returns:
@@ -49,73 +49,76 @@ class GeminiProvider:
         """
         # Setup system prompt for Tetris
         system_prompt = """You are an AI assistant that helps play Tetris. 
-        BE EXTREMELY BRIEF AND DECISIVE! Analyze the game state and immediately determine the optimal move.
-        
-        ### Strategies:
-        1. Keep the stack flat horizontal not verticaland balanced
-        2. Avoid creating holes
-        3. Clear lines when possible
-        4. Plan ahead for the next piece
-        
-        ### Controls:
-        - K_LEFT: move piece left
-        - K_RIGHT: move piece right
-        - K_UP: rotate piece clockwise
-        - K_DOWN: accelerated drop
-        
-        Express your moves using ONLY key constants (K_LEFT, K_RIGHT, K_UP, K_DOWN).
-        Your response must only contain key constants with spaces between them.
-        SPEED IS CRITICAL, so be extremely concise."""
+        Analyze the current game state and suggest the best move for the current piece.
+        Return valid Pygame key constants (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN) to move the current piece.
+        LEFT and RIGHT to move, UP to rotate, DOWN to drop faster.
+        Your goal is to clear as many lines as possible."""
         
         try:
-            # Prepare content correctly for Gemini API
+            # Prepare contents
             contents = []
             
-            # Handle image input - either from binary data or file path
-            if image_path and os.path.exists(image_path):
-                encoded_image = self.encode_image(image_path)
-                # For API that requires base64 encoding
-                # Here you would use the encoded_image variable
-                
-                # For the google-generativeai library, we can load the image directly
-                image = Image.open(image_path)
-                contents.append(image)
-            elif image_data is not None and isinstance(image_data, bytes):
+            # Add system prompt
+            contents.append(system_prompt)
+            
+            # Add image if provided
+            if base64_image:
                 try:
-                    # Convert binary data to PIL image
-                    image = Image.open(BytesIO(image_data))
-                    # Add image to contents
+                    # If the base64 string has a data URL prefix, remove it
+                    if ',' in base64_image:
+                        base64_image = base64_image.split(',', 1)[1]
+                    
+                    # Decode base64 to binary
+                    image_bytes = base64.b64decode(base64_image)
+                    
+                    # Open the image
+                    image = Image.open(BytesIO(image_bytes))
+                    
+                    # Add the image to contents
                     contents.append(image)
+                    print(f"Added image to Gemini request, content array length: {len(contents)}")
                 except Exception as e:
-                    print(f"Error processing image: {e}")
+                    print(f"Error processing image for Gemini: {e}")
+            elif image_path:
+                # Use image from file path
+                encoded_image = self.encode_image(image_path)
+                contents.append(encoded_image)
+                print(f"Added image from path to Gemini request, content array length: {len(contents)}")
             
-            # Add the text after the image if present
-            contents.append(f"{system_prompt}\n\n{prompt}")
+            # Add the prompt text
+            contents.append(prompt)
             
-            # Generate response from the model
+            # Configure generation parameters
             generation_config = {
                 "temperature": 0.2,
-                "max_output_tokens": 1000
+                "top_p": 0.95,
+                "top_k": 32,
+                "max_output_tokens": 1024,
             }
             
+            # Call the Gemini API
             response = self.genai_model.generate_content(
                 contents,
                 generation_config=generation_config
             )
-            print(f"Gemini Response: {response.text}")
-            # Extract and return the text content
-            return response.text
             
+            # Return the response text
+            if hasattr(response, 'text'):
+                return response.text
+            return str(response)
+        
         except Exception as e:
+            # Print the error for debugging
             print(f"Error calling Gemini API: {e}")
-            # Return a random fallback response to avoid always using DOWN
+            
+            # Fallback responses for when the API call fails
             fallback_responses = [
                 "I'll use pygame.K_LEFT to move the piece left.",
                 "I'll use pygame.K_RIGHT to move the piece right.",
                 "I'll use pygame.K_UP to rotate the piece.",
                 "I'll use pygame.K_DOWN to move the piece down faster."
             ]
-            return random.choice(fallback_responses) 
+            return random.choice(fallback_responses)
 
     def encode_image(self, image_path):
         """

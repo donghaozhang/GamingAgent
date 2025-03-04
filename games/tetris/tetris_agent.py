@@ -405,6 +405,14 @@ def main(args=None):
                     logger.warning("Could not import GeminiProvider, using mock provider instead")
                     model_provider = MockProvider(model=args.model)
                 logger.info(f"Created Gemini provider with model {args.model}")
+            elif args.provider.lower() == "openrouter":
+                try:
+                    from model_providers.openrouter_provider import OpenRouterProvider
+                    model_provider = OpenRouterProvider(model=args.model)
+                except ImportError:
+                    logger.warning("Could not import OpenRouterProvider, using mock provider instead")
+                    model_provider = MockProvider(model=args.model)
+                logger.info(f"Created OpenRouter provider with model {args.model}")
             else:
                 logger.warning(f"Unknown provider {args.provider}. Using mock provider.")
                 model_provider = MockProvider(model=args.model)
