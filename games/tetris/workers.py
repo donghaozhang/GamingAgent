@@ -93,11 +93,10 @@ The speed it drops is at around ~0.75s/grid bock.
                 screenshot = pyautogui.screenshot(region=tetris_region)
                 print(f"[Thread {thread_id}] Capturing Tetris window")
             else:
-                # Fallback to the default method with adjusted region for better Tetris game capture
+                # Fallback to the default method
                 print(f"[Thread {thread_id}] No Tetris window found. Using default region.")
                 screen_width, screen_height = pyautogui.size()
-                # Adjusted region to better capture the Tetris gameplay area
-                region = (0, 0, screen_width // 32 * 9, screen_height // 32 * 20)
+                region = (0, 0, screen_width // 64 * 18, screen_height // 64 * 40)
                 screenshot = pyautogui.screenshot(region=region)
 
             # Create a unique folder for this thread's cache

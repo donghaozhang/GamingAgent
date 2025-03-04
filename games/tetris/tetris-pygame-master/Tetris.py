@@ -377,7 +377,7 @@ def main(window):
     next_piece = get_shape()
     clock = pygame.time.Clock()
     fall_time = 0
-    fall_speed = 0.60  # Changed from 0.35 to 0.60 (600ms) to accommodate AI agent latency
+    fall_speed = 0.35
     level_time = 0
     score = 0
     last_score = get_max_score()
@@ -393,9 +393,9 @@ def main(window):
 
         clock.tick()  # updates clock
 
-        if level_time/1000 > 10:    # Changed from 5 to 10 seconds - make the difficulty harder every 10 seconds
+        if level_time/1000 > 5:    # make the difficulty harder every 10 seconds
             level_time = 0
-            if fall_speed > 0.30:   # Changed minimum speed from 0.15 to 0.30 to keep the game slower for AI
+            if fall_speed > 0.15:   # until fall speed is 0.15
                 fall_speed -= 0.005
 
         if fall_time / 1000 > fall_speed:
