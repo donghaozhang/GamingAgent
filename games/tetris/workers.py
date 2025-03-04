@@ -101,13 +101,17 @@ The speed it drops is at around ~0.75s/grid bock.
 
             # Encode the screenshot
             base64_image = encode_image(screenshot_path)
+            print(f"[Thread {thread_id}] Screenshot encoded, preparing to call API...")
 
             start_time = time.time()
             if api_provider == "anthropic":
+                print(f"[Thread {thread_id}] Calling Anthropic API with model {model_name}...")
                 generated_code_str = anthropic_completion(system_prompt, model_name, base64_image, tetris_prompt)
             elif api_provider == "openai":
+                print(f"[Thread {thread_id}] Calling OpenAI API with model {model_name}...")
                 generated_code_str = openai_completion(system_prompt, model_name, base64_image, tetris_prompt)
             elif api_provider == "gemini":
+                print(f"[Thread {thread_id}] Calling Gemini API with model {model_name}...")
                 generated_code_str = gemini_completion(system_prompt, model_name, base64_image, tetris_prompt)
             else:
                 raise NotImplementedError(f"API provider: {api_provider} is not supported.")
@@ -124,14 +128,19 @@ The speed it drops is at around ~0.75s/grid bock.
             print(f"[Thread {thread_id}] --- API output ---\n{generated_code_str}\n")
 
             # Extract Python code for execution
+            print(f"[Thread {thread_id}] Extracting Python code from response...")
             clean_code = extract_python_code(generated_code_str)
-            log_output(thread_id, f"[Thread {thread_id}] Python code to be executed:\n{clean_code}\n")
+            log_output(thread_id, f"[Thread {thread_id}] Python code to be executed:\n{clean_code}\n", "tetris")
             print(f"[Thread {thread_id}] Python code to be executed:\n{clean_code}\n")
 
             try:
+                print(f"[Thread {thread_id}] Executing Python code...")
                 exec(clean_code)
+                print(f"[Thread {thread_id}] Code execution completed.")
             except Exception as e:
                 print(f"[Thread {thread_id}] Error executing code: {e}")
+                
+            print(f"[Thread {thread_id}] Cycle completed, beginning next cycle...")
 
     except KeyboardInterrupt:
         print(f"[Thread {thread_id}] Interrupted by user. Exiting...")
