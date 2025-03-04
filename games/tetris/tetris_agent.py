@@ -86,14 +86,41 @@ logger = setup_logging()
 # 加载 .env 文件
 load_dotenv()
 
+# Define planning time in seconds
+plan_seconds = 3  # Default planning time of 3 seconds
+
 # Define system prompt as constant
-SYSTEM_PROMPT = (
-    "You are an expert AI agent specialized in playing Tetris gameplay, search for and execute optimal moves given each game state. "
-    "MAKE DECISIONS QUICKLY AND BE DECISIVE! The game is running with no cooldown between moves and in a reduced height grid. "
-    "Immediately determine the best action for the current piece - fast reactions are critical! "
-    "Express your decision as direct key presses (LEFT, RIGHT, UP for rotation, DOWN for fast drop). "
-    "Multiple actions in sequence are fine, but ACT QUICKLY!"
-)
+SYSTEM_PROMPT = f"""
+Analyze the current Tetris board state and generate PyAutoGUI code to control Tetris 
+for the next {plan_seconds} second(s). You can move left/right, rotate pieces. Focus on clearing lines and avoiding 
+stacking that would cause a top-out.
+
+At the time the code is executed, 3~5 seconds have elapsed. The game might have moved on to the next block if the stack is high.
+
+However, in your code, consider only the current block or the next block.
+
+The speed it drops is at around ~0.75s/grid bock.
+
+### General Tetris Controls (example keybinds):
+- left: move piece left
+- right: move piece right
+- up: rotate piece clockwise
+- down: accelerated drop （if necessary)
+
+### Strategies and Caveats:
+1. If the stack is high, most likely you are controlling the "next" block due to latency.
+2. Prioritize keeping the stack flat. Balance the two sides.
+3. Consider shapes ahead of time. DO NOT rotate and quickly move the block again once it's position is decided.
+4. Avoid creating holes.
+5. If you see a chance to clear lines, rotate and move the block to correct positions.
+6. Plan for your next piece as well, but do not top out.
+7. The entire sequence of key presses should be feasible within {plan_seconds} second(s).
+
+### Output Format:
+- Output ONLY the Python code for PyAutoGUI commands, e.g. `pyautogui.press("left")`.
+- Include brief comments for each action.
+- Do not print anything else besides these Python commands.
+"""
 
 # Update import path to use the game module with relative import
 try:

@@ -55,7 +55,8 @@ def test_gemini_provider():
         print(f"Successfully created provider with model: {provider.model}")
         
         # Test a simple response
-        test_prompt = "In Tetris, I have an 'L' piece and there's a gap on the right side of the board. What should I do?"
+        # test_prompt = "In Tetris, I have an 'L' piece and there's a gap on the right side of the board. What should I do?"
+        test_prompt = "What model are you and bespecifically what is your model name?"
         print(f"Sending test prompt: {test_prompt}")
         
         response = provider.get_response(test_prompt)

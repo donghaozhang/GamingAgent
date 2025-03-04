@@ -1,7 +1,7 @@
 """
-Tetris Runner Script with Gemini Flash 2.0
+Tetris Runner Script with Gemini 1.5 Flash
 
-This script makes it easy to run the Tetris agent with Google's Gemini Flash 2.0 model,
+This script makes it easy to run the Tetris agent with Google's Gemini 1.5 Flash model,
 which provides extremely fast responses and is optimized for real-time gameplay.
 """
 
@@ -11,7 +11,7 @@ import subprocess
 import os
 
 def main():
-    parser = argparse.ArgumentParser(description='Run Tetris with Gemini Flash 2.0')
+    parser = argparse.ArgumentParser(description='Run Tetris with Gemini 1.5 Flash')
     parser.add_argument('--cooldown', type=float, default=0.0, 
                         help='API cooldown in seconds (default: 0 - no cooldown)')
     
@@ -21,11 +21,11 @@ def main():
     cmd = [
         "python", "-m", "games.tetris.tetris_agent",
         "--provider", "gemini",
-        "--model", "gemini-flash-2.0",
+        "--model", "gemini-1.5-flash",
         "--cooldown", str(args.cooldown)
     ]
     
-    print(f"Starting Tetris with Gemini Flash 2.0 (cooldown: {args.cooldown}s)")
+    print(f"Starting Tetris with Gemini 1.5 Flash (cooldown: {args.cooldown}s)")
     print("Press Ctrl+C to stop the game")
     
     try:

@@ -47,11 +47,21 @@ class OpenAIProvider:
         system_prompt = """You are an AI assistant that helps play Tetris. 
         Analyze the current game state and suggest the best move for the current piece.
         Focus on clearing lines and building a stable stack.
-        MAKE DECISIONS QUICKLY AND BE DECISIVE! The game requires fast reactions.
-        Immediately determine the best action for the current piece.
-        Express your decision as direct key presses (LEFT, RIGHT, UP for rotation, DOWN for fast drop).
-        Multiple actions in sequence are fine, but ACT QUICKLY!
-        Respond with a clear action using pygame key constants (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN)."""
+        
+        ### Strategies:
+        1. Prioritize keeping the stack flat and balanced
+        2. Avoid creating holes
+        3. Clear lines when possible
+        4. Plan ahead for the next piece
+        
+        ### Controls:
+        - LEFT: move piece left
+        - RIGHT: move piece right
+        - UP: rotate piece clockwise
+        - DOWN: accelerated drop
+        
+        Express your moves using pygame key constants (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN).
+        Be quick and decisive - the game requires fast reactions!"""
         
         # Add system message
         messages.append({
