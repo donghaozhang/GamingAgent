@@ -25,7 +25,7 @@ def main():
                         help="Model name.")
     parser.add_argument("--concurrency_interval", type=float, default=1,
                         help="Interval in seconds between workers.")
-    parser.add_argument("--api_response_latency_estimate", type=float, default=5,
+    parser.add_argument("--api_response_latency_estimate", type=float, default=7,
                         help="Estimated API response latency in seconds.")
     parser.add_argument("-control_time", type=float, default=4,
                         help=" orker control time.")
@@ -46,7 +46,14 @@ def main():
 
     print(f"Starting with {num_threads} threads using policy '{args.policy}'...")
     print(f"API Provider: {args.api_provider}, Model Name: {args.model_name}")
+    print(f"Average API latency: ~{args.api_response_latency_estimate}s")
     print(f"Press 'q' to terminate all threads and exit.")
+    
+    # Print tips for improving performance
+    if num_threads == 1:
+        print("\nTIP: For better performance with high API latency, try running with multiple threads:")
+        print("     python -m games.tetris.tetris_agent --api_response_latency_estimate 7 --concurrency_interval 0.5 --control_time 3")
+        print("     This will create multiple staggered workers to handle the high latency.")
 
     # Create an event to signal threads to stop
     stop_event = threading.Event()

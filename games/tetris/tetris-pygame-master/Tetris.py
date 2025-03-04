@@ -377,7 +377,7 @@ def main(window):
     next_piece = get_shape()
     clock = pygame.time.Clock()
     fall_time = 0
-    fall_speed = 0.35
+    fall_speed = 0.90  # Changed from 0.60 to 0.90 (900ms) to better accommodate high API latency
     level_time = 0
     score = 0
     last_score = get_max_score()

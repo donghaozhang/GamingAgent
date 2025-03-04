@@ -42,6 +42,11 @@ def openai_completion(system_prompt, model_name, base64_image, prompt):
 def anthropic_completion(system_prompt, model_name, base64_image, prompt):
     import time
     
+    # NOTE: If experiencing high latency (5-7s):
+    # 1. Try using a different model like 'claude-3-5-sonnet-20241022' which may be faster
+    # 2. Run the agent with multiple threads using higher --api_response_latency_estimate and lower --concurrency_interval
+    # 3. Consider reducing the image resolution before sending to API
+    
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     messages = [
                 {
