@@ -88,7 +88,11 @@ load_dotenv()
 
 # Define system prompt as constant
 SYSTEM_PROMPT = (
-    "You are an expert AI agent specialized in playing Tetris gameplay, search for and execute optimal moves given each game state. Prioritize line clearing over speed."
+    "You are an expert AI agent specialized in playing Tetris gameplay, search for and execute optimal moves given each game state. "
+    "MAKE DECISIONS QUICKLY AND BE DECISIVE! The game is running with no cooldown between moves and in a reduced height grid. "
+    "Immediately determine the best action for the current piece - fast reactions are critical! "
+    "Express your decision as direct key presses (LEFT, RIGHT, UP for rotation, DOWN for fast drop). "
+    "Multiple actions in sequence are fine, but ACT QUICKLY!"
 )
 
 # Update import path to use the game module with relative import

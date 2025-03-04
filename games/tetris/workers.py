@@ -475,21 +475,13 @@ def worker_tetris(result_queue, stop_event, worker_id, model_provider, tetris_pr
                     current_state_hash = hash_game_state(state)
                     time_since_last_call = current_time - last_api_call_time
                     
-                    # Decision logic to reduce API calls:
-                    # 1. If we're within the cooldown period AND the game state is similar, reuse the cached response
-                    # 2. Otherwise, make a new API call
-                    if (time_since_last_call < API_COOLDOWN_SECONDS and 
-                        cached_response is not None and 
-                        cached_state_hash == current_state_hash):
-                        logger.info(f"Reusing cached response (cooldown: {time_since_last_call:.1f}s < {API_COOLDOWN_SECONDS}s)")
-                        response = cached_response
-                    else:
-                        # Make an actual API call
-                        logger.info(f"Making new API call after {time_since_last_call:.1f}s")
-                        response = model_provider.get_response(prompt)
-                        last_api_call_time = current_time
-                        cached_response = response
-                        cached_state_hash = current_state_hash
+                    # COOLDOWN DISABLED: Always make a new API call regardless of time passed
+                    # Make an actual API call
+                    logger.info(f"Making new API call (cooldown disabled)")
+                    response = model_provider.get_response(prompt)
+                    last_api_call_time = current_time
+                    cached_response = response  # Update cache for tracking purposes
+                    cached_state_hash = current_state_hash  # Update hash for tracking purposes
                 
                 logger.info(f"Worker {worker_id} received AI response: {response[:100]}...")
                 

@@ -27,9 +27,9 @@ pygame.font.init()
 col = 10  # 10 columns
 row = 10  # 10 rows (changed from 20 to make the game faster)
 s_width = 800  # window width
-s_height = 750  # window height
+s_height = 550  # window height (reduced from 750 to account for shorter play area)
 play_width = 300  # play window width; 300/10 = 30 width per block
-play_height = 600  # play window height; 600/20 = 20 height per block
+play_height = 300  # play window height; 300/10 = 30 height per block (adjusted for 10 rows)
 block_size = 30  # size of block
 
 top_left_x = (s_width - play_width) // 2
