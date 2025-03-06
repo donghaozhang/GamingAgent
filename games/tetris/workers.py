@@ -8,13 +8,36 @@ from tools.utils import encode_image, log_output, extract_python_code
 from tools.serving.api_providers import anthropic_completion, openai_completion, gemini_completion
 
 # Add this function to find Tetris window directly
-def find_tetris_window():
+def find_tetris_window(window_title_keywords=None):
     """
-    Uses pyautogui.getWindowsWithTitle to find the Tetris window
-    Returns the window region as (left, top, width, height) or None if not found
+    尝试多种方法寻找Tetris窗口
+    1. 首先通过精确标题查找Pygame窗口
+    2. 然后通过部分标题匹配
+    3. 最后尝试查找可能是游戏的窗口
+    
+    Args:
+        window_title_keywords (list): 用于识别窗口的关键词列表。默认为None，使用内置关键词
+    
+    Returns:
+        tuple: 窗口区域 (left, top, width, height) 或 None
     """
-    # Try to find the Tetris window
-    windows = pyautogui.getWindowsWithTitle("Tetris")
+    # 如果未提供关键词，使用默认值
+    if window_title_keywords is None:
+        window_title_keywords = [
+            "Tetris", "tetris", "TETRIS", 
+            "pygame", "Pygame", "PyGame",  # Pygame通常会在窗口标题中
+            "Simple Tetris", "simple_tetris",
+            "俄罗斯方块", "方块", "BlockGame",
+            "Game", "game", "Play"
+        ]
+    
+    # 要排除的窗口标题关键词
+    exclude_keywords = [
+        "Cursor", "cursor",  # 编辑器窗口
+        "Chrome", "Edge", "Firefox",  # 浏览器窗口
+        ".py", "code", "Code",  # 代码文件
+        "Terminal", "Console", "PowerShell", "cmd"  # 终端窗口
+    ]
     
     # DEBUG: 列出所有可用窗口
     all_windows = pyautogui.getAllWindows()
@@ -22,13 +45,50 @@ def find_tetris_window():
     for w in all_windows:
         print(f"  - '{w.title}' at {w.left}, {w.top}, {w.width}, {w.height}")
     
-    if windows:
-        window = windows[0]  # Get the first window with "Tetris" in the title
-        print(f"Found Tetris window: {window.title} at {window.left}, {window.top}, {window.width}, {window.height}")
-        return (window.left, window.top, window.width, window.height)
-    else:
-        print("DEBUG: No window with 'Tetris' in title was found")
+    # 1. 首先尝试通过关键词标题匹配
+    for window in all_windows:
+        # 检查窗口标题是否包含关键词
+        if any(keyword.lower() in window.title.lower() for keyword in window_title_keywords):
+            # 检查是否是排除的窗口类型
+            excluded = False
+            for keyword in exclude_keywords:
+                if keyword in window.title:
+                    excluded = True
+                    break
+            
+            if not excluded:
+                print(f"Found matching window: {window.title} at {window.left}, {window.top}, {window.width}, {window.height}")
+                return (window.left, window.top, window.width, window.height)
     
+    # 2. 尝试查找小窗口，宽高比接近正方形（Tetris通常是接近正方形的窗口）
+    game_candidates = []
+    for window in all_windows:
+        # 检查是否是排除的窗口类型
+        excluded = False
+        for keyword in exclude_keywords:
+            if keyword in window.title:
+                excluded = True
+                break
+        
+        if excluded:
+            continue
+            
+        # 只查找中等大小的窗口（Pygame窗口通常不会很大）
+        if 200 <= window.width <= 800 and 200 <= window.height <= 800:
+            # 计算宽高比，寻找接近游戏窗口的比例
+            aspect_ratio = window.width / window.height
+            if 0.5 <= aspect_ratio <= 1.2:  # 俄罗斯方块游戏窗口通常接近正方形或稍微高一些
+                game_candidates.append((window, abs(aspect_ratio - 0.8)))
+    
+    # 如果找到候选窗口，使用最接近0.8宽高比的窗口
+    if game_candidates:
+        # 按宽高比接近0.8(典型Tetris比例)排序
+        game_candidates.sort(key=lambda x: x[1])
+        best_window = game_candidates[0][0]
+        print(f"Found potential game window by aspect ratio: {best_window.title} at {best_window.left}, {best_window.top}, {best_window.width}, {best_window.height}")
+        return (best_window.left, best_window.top, best_window.width, best_window.height)
+    
+    print("DEBUG: No window matching Tetris criteria was found")
     return None
 
 def worker_tetris(
@@ -137,6 +197,8 @@ The speed it drops is at around ~0.75s/grid bock.
 
     try:
         iteration = 0
+        window_missing_count = 0  # 计数找不到窗口的次数
+        
         # 主循环
         while not should_stop():
             iteration += 1
@@ -161,18 +223,35 @@ The speed it drops is at around ~0.75s/grid bock.
                 print(f"[Thread {thread_id}] Using manually specified window region: {region}")
                 screenshot = pyautogui.screenshot(region=region)
                 region_type = "manual_region"
+                window_missing_count = 0  # 重置计数
             else:
                 # 尝试自动检测窗口
                 tetris_region = find_tetris_window()
                 
                 if tetris_region:
                     # Use the detected Tetris window region
-                    screenshot = pyautogui.screenshot(region=tetris_region)
-                    print(f"[Thread {thread_id}] Capturing Tetris window at region: {tetris_region}")
+                    region = tetris_region
+                    screenshot = pyautogui.screenshot(region=region)
+                    print(f"[Thread {thread_id}] Capturing Tetris window at region: {region}")
                     region_type = "tetris_window"
+                    window_missing_count = 0  # 重置计数
                 else:
+                    # 找不到窗口时
+                    window_missing_count += 1
+                    print(f"[Thread {thread_id}] No Tetris window found ({window_missing_count}/3 attempts). Using default region.")
+                    
+                    # 如果连续3次找不到窗口，则暂停一段时间
+                    if window_missing_count >= 3:
+                        print(f"[Thread {thread_id}] WARNING: Failed to find Tetris window for 3 consecutive attempts.")
+                        print(f"[Thread {thread_id}] Pausing for 10 seconds to allow Tetris game to start or become visible...")
+                        for i in range(10):
+                            if should_stop():
+                                break
+                            time.sleep(1)
+                            print(f"[Thread {thread_id}] Waiting... {i+1}/10 seconds")
+                        window_missing_count = 0  # 重置计数
+                    
                     # Fallback to the default method
-                    print(f"[Thread {thread_id}] No Tetris window found. Using default region.")
                     screen_width, screen_height = pyautogui.size()
                     region = (0, 0, screen_width // 64 * 18, screen_height // 64 * 40)
                     screenshot = pyautogui.screenshot(region=region)

@@ -473,6 +473,17 @@ def main(window):
 
 def main_menu(window):
     run = True
+    
+    # 绘制启动屏幕
+    draw_text_middle('Tetris - Auto Starting in 2s', 50, (255, 255, 255), window)
+    pygame.display.update()
+    
+    # 自动启动，等待2秒后自动开始游戏
+    pygame.time.delay(2000)
+    main(window)
+    
+    # 以下是原始代码，保留但不执行
+    """
     while run:
         draw_text_middle('Press any key to begin', 50, (255, 255, 255), window)
         pygame.display.update()
@@ -482,12 +493,13 @@ def main_menu(window):
                 run = False
             elif event.type == pygame.KEYDOWN:
                 main(window)
-
+    """
+    
     pygame.quit()
 
 
 if __name__ == '__main__':
     win = pygame.display.set_mode((s_width, s_height))
     pygame.display.set_caption('Tetris')
-
+    
     main_menu(win)  # start game
