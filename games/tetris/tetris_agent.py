@@ -177,6 +177,14 @@ def tetris_monitor_thread(use_simplified=True):
         use_simplified (bool): 是否使用简化版Tetris
     """
     global tetris_process
+    no_auto_launch = '--no_launch_game' in sys.argv
+    
+    # 如果指定了不自动启动游戏，则只监控，不启动
+    if no_auto_launch:
+        print("Running in monitor-only mode (--no_launch_game)")
+        while not stop_flag:
+            time.sleep(1)  # 简单睡眠，减少CPU使用
+        return
     
     while not stop_flag:
         # 检查Tetris进程是否需要启动或重启
@@ -219,7 +227,29 @@ def stop_tetris_game():
     """
     停止Tetris游戏进程
     """
-    # 先检查是否有Tetris进程在运行
+    # 先检查是否有全局进程变量
+    global tetris_process
+    if tetris_process:
+        try:
+            # 检查进程是否还在运行
+            if tetris_process.poll() is None:
+                print(f"Terminating Tetris process (PID: {tetris_process.pid})")
+                tetris_process.kill()
+                try:
+                    tetris_process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    print("Could not wait for Tetris process to terminate")
+            tetris_process = None
+        except Exception as e:
+            print(f"Error terminating Tetris process: {e}")
+            tetris_process = None
+    
+    # 如果使用--no_launch_game参数启动，则不查找其他Tetris进程
+    if '--no_launch_game' in sys.argv:
+        print("Using --no_launch_game, not searching for other Tetris processes")
+        return
+    
+    # 检查是否有其他Tetris进程在运行
     for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
         try:
             # 查找Python进程，且命令行中包含Tetris关键词
@@ -236,23 +266,6 @@ def stop_tetris_game():
                     print(f"Could not wait for process {proc.pid} to terminate")
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
             print(f"Error accessing process: {e}")
-            
-    # 清理全局进程变量
-    global tetris_process
-    if tetris_process:
-        try:
-            # 检查进程是否还在运行
-            if tetris_process.poll() is None:
-                print(f"Terminating Tetris process (PID: {tetris_process.pid})")
-                tetris_process.kill()
-                try:
-                    tetris_process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    print("Could not wait for Tetris process to terminate")
-            tetris_process = None
-        except Exception as e:
-            print(f"Error terminating Tetris process: {e}")
-            tetris_process = None
 
 # 键盘监听函数，使用keyboard库接收"q"键
 def key_listener():

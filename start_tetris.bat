@@ -1,13 +1,36 @@
 @echo off
 echo ==================================
-echo Tetris AI Agent 一键启动程序
+echo      Tetris AI Agent 启动程序
 echo ==================================
+echo.
+
+REM 显示菜单选项
+echo 请选择启动模式:
+echo 1. 同时启动游戏和AI代理 (推荐)
+echo 2. 仅启动游戏，不启动AI代理
+echo 3. 仅启动AI代理，不启动游戏 (假设游戏已经运行)
+echo.
+set /p choice="请输入选项 (1-3, 默认为1): "
+
+if "%choice%"=="" set choice=1
+
+REM 根据选择设置参数
+if "%choice%"=="1" (
+    set launch_params=
+) else if "%choice%"=="2" (
+    set launch_params=--direct-game
+) else if "%choice%"=="3" (
+    set launch_params=--only-agent
+) else (
+    echo 无效选项，使用默认选项1
+    set launch_params=
+)
 
 REM 检查conda是否可用
 where conda >nul 2>nul
 if %ERRORLEVEL% neq 0 (
     echo Conda未安装或不在PATH中，尝试直接启动...
-    python run_tetris.py %*
+    python run_tetris.py %launch_params% %*
     goto :end
 )
 
@@ -21,7 +44,7 @@ echo 当前conda环境: %conda_env%
 REM 如果当前是game_cua环境，则直接运行
 if "%conda_env%"=="game_cua" (
     echo 已在game_cua环境中，直接启动...
-    python run_tetris.py %*
+    python run_tetris.py %launch_params% %*
     goto :end
 )
 
@@ -34,8 +57,8 @@ if %ERRORLEVEL% neq 0 (
     echo 已激活game_cua环境
 )
 
-echo 启动Tetris AI代理...
-python run_tetris.py %*
+echo 启动Tetris程序...
+python run_tetris.py %launch_params% %*
 
 :end
 echo.

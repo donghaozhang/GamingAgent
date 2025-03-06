@@ -3,6 +3,8 @@ import os
 import pyautogui
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont  # 添加绘图功能
+import threading
+from datetime import datetime
 
 from tools.utils import encode_image, log_output, extract_python_code
 from tools.serving.api_providers import anthropic_completion, openai_completion, gemini_completion
@@ -135,16 +137,20 @@ def worker_tetris(
     
     # 初始化检查停止标志的函数
     def should_stop():
+        """检查是否应该停止线程"""
         if stop_flag is None:
             return False
-        # 如果是threading.Event，调用is_set()
-        if hasattr(stop_flag, 'is_set'):
+        elif callable(stop_flag):
+            return stop_flag()
+        elif isinstance(stop_flag, threading.Event):
             return stop_flag.is_set()
-        # 否则当作布尔值处理
-        return bool(stop_flag)
+        else:
+            return bool(stop_flag)
     
     # Initialize this thread in the shared responses dictionary if tracking responses
     if responses_dict is not None:
+        if "threads" not in responses_dict:
+            responses_dict["threads"] = {}
         responses_dict["threads"][str(thread_id)] = {
             "start_time": time.time(),
             "responses": []
@@ -204,18 +210,6 @@ The speed it drops is at around ~0.75s/grid bock.
             iteration += 1
             print(f"\n[Thread {thread_id}] === Iteration {iteration} ===\n")
             
-            # 首先保存一个全屏截图，用于对比参考
-            fullscreen = pyautogui.screenshot()
-            
-            # Create a unique folder for this thread's cache
-            thread_folder = f"cache/tetris/thread_{thread_id}"
-            os.makedirs(thread_folder, exist_ok=True)
-            
-            # 保存全屏截图以供分析
-            fullscreen_path = os.path.join(thread_folder, "fullscreen.png")
-            fullscreen.save(fullscreen_path)
-            print(f"[Thread {thread_id}] Full screen screenshot saved to: {fullscreen_path}")
-            
             # 确定窗口区域 - 优先使用手动指定的区域
             if manual_window_region:
                 # 使用手动指定的窗口区域
@@ -263,102 +257,57 @@ The speed it drops is at around ~0.75s/grid bock.
                 print(f"[Thread {thread_id}] Stop flag detected after window detection. Exiting...")
                 break
 
+            # 保存截图和处理图像增强的代码
+            # 创建一个临时目录来存储截图
+            thread_folder = os.path.join(output_dir, f"thread_{thread_id}")
+            os.makedirs(thread_folder, exist_ok=True)
+            
             # 添加调试信息到截图上
             draw = ImageDraw.Draw(screenshot)
             # 添加红色边框
             draw.rectangle([(0, 0), (screenshot.width-1, screenshot.height-1)], outline="red", width=3)
-            # 添加文本信息
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-            debug_text = f"Thread {thread_id} | {timestamp} | {region_type}"
-            try:
-                # 尝试添加文本（如果没有字体，可能会失败，但不影响主流程）
-                draw.text((10, 10), debug_text, fill="red")
-            except Exception as e:
-                print(f"[Thread {thread_id}] Could not add text to image: {e}")
-
-            screenshot_path = os.path.join(thread_folder, "screenshot.png")
+            
+            # 保存截图
+            screenshot_path = os.path.join(thread_folder, f"screenshot_iter_{iteration}.png")
             screenshot.save(screenshot_path)
-            
-            # 同时保存一个带有迭代号的截图，便于对比历史记录
-            iter_screenshot_path = os.path.join(thread_folder, f"screenshot_iter_{iteration}.png")
-            screenshot.save(iter_screenshot_path)
-            print(f"[Thread {thread_id}] Also saved iteration-specific screenshot to: {iter_screenshot_path}")
-            
-            # 检查图像是否全黑或全白
-            img = Image.open(screenshot_path)
-            img_array = np.array(img)
-            
-            # 检查图像是否全黑
-            is_black = np.all(img_array < 10)
-            # 检查图像是否全白
-            is_white = np.all(img_array > 245)
-            # 检查图像统计信息
-            avg_pixel = np.mean(img_array)
-            std_pixel = np.std(img_array)
-            
-            print(f"[Thread {thread_id}] Screenshot analysis:")
-            print(f"  - Size: {img.width}x{img.height}")
-            print(f"  - All black: {is_black}")
-            print(f"  - All white: {is_white}")
-            print(f"  - Average pixel value: {avg_pixel:.2f}")
-            print(f"  - Pixel standard deviation: {std_pixel:.2f}")
-            print(f"  - Screenshot saved to: {screenshot_path}")
-            
-            # 如果图像全黑或全白，发出警告
-            if is_black or is_white:
-                print(f"[Thread {thread_id}] WARNING: Screenshot appears to be {'black' if is_black else 'white'} only!")
-                print(f"[Thread {thread_id}] This may indicate a problem with window detection or permissions.")
-                
-                # 尝试使用PIL直接截图（替代方案）
-                print(f"[Thread {thread_id}] Attempting alternative screenshot method...")
-                try:
-                    from PIL import ImageGrab
-                    alt_screenshot = ImageGrab.grab(bbox=tetris_region if tetris_region else region)
-                    alt_path = os.path.join(thread_folder, "alt_screenshot.png")
-                    alt_screenshot.save(alt_path)
-                    print(f"[Thread {thread_id}] Alternative screenshot saved to: {alt_path}")
-                    
-                    # 分析替代截图
-                    alt_img_array = np.array(alt_screenshot)
-                    alt_is_black = np.all(alt_img_array < 10)
-                    print(f"[Thread {thread_id}] Alternative screenshot is all black: {alt_is_black}")
-                    
-                    if not alt_is_black:
-                        print(f"[Thread {thread_id}] Using alternative screenshot instead!")
-                        screenshot = alt_screenshot
-                        screenshot.save(screenshot_path)
-                except Exception as e:
-                    print(f"[Thread {thread_id}] Alternative screenshot method failed: {e}")
+            print(f"[Thread {thread_id}] Screenshot saved to: {screenshot_path}")
 
-            # 如果是保存响应，为当前iteration创建一个唯一的文件夹
-            if save_responses:
-                response_folder = os.path.join(output_dir, f"thread_{thread_id}")
-                os.makedirs(response_folder, exist_ok=True)
-
-            # 再次检查停止标志
-            if should_stop():
-                print(f"[Thread {thread_id}] Stop flag detected before API call. Exiting...")
-                break
-
-            # Encode the screenshot
+            # 获取截图的Base64编码
             base64_image = encode_image(screenshot_path)
             print(f"[Thread {thread_id}] Screenshot encoded, preparing to call API...")
-
-            # 调试暂停，仅在启用时执行
+            
+            # 如果启用了调试暂停，等待一段时间
             if debug_pause:
                 print(f"[Thread {thread_id}] DEBUG: Pausing for 5 seconds to allow log inspection...")
                 time.sleep(5)
             
+            # 调用API获取响应
             start_time = time.time()
+            
             if api_provider == "anthropic":
                 print(f"[Thread {thread_id}] Calling Anthropic API with model {model_name}...")
-                generated_code_str = anthropic_completion(system_prompt, model_name, base64_image, tetris_prompt)
+                generated_code_str = anthropic_completion(
+                    system_prompt,
+                    model_name,
+                    base64_image,
+                    tetris_prompt
+                )
             elif api_provider == "openai":
                 print(f"[Thread {thread_id}] Calling OpenAI API with model {model_name}...")
-                generated_code_str = openai_completion(system_prompt, model_name, base64_image, tetris_prompt)
+                generated_code_str = openai_completion(
+                    system_prompt,
+                    model_name,
+                    base64_image,
+                    tetris_prompt
+                )
             elif api_provider == "gemini":
                 print(f"[Thread {thread_id}] Calling Gemini API with model {model_name}...")
-                generated_code_str = gemini_completion(system_prompt, model_name, base64_image, tetris_prompt)
+                generated_code_str = gemini_completion(
+                    system_prompt,
+                    model_name,
+                    base64_image,
+                    tetris_prompt
+                )
             else:
                 raise NotImplementedError(f"API provider: {api_provider} is not supported.")
 
@@ -368,7 +317,6 @@ The speed it drops is at around ~0.75s/grid bock.
 
             print(f"[Thread {thread_id}] Request latency: {latency:.2f}s")
             avg_latency = np.mean(all_response_time)
-            print(f"[Thread {thread_id}] Latencies: {all_response_time}")
             print(f"[Thread {thread_id}] Average latency: {avg_latency:.2f}s\n")
 
             # 再次检查停止标志
@@ -391,31 +339,21 @@ The speed it drops is at around ~0.75s/grid bock.
             # 如果使用共享响应字典，也添加到那里
             if responses_dict is not None:
                 responses_dict["threads"][str(thread_id)]["responses"].append(response_data)
-            
+                
             # 如果需要保存响应
             if save_responses:
-                response_file = os.path.join(response_folder, f"response_{iteration}.json")
+                response_file = os.path.join(thread_folder, f"response_{iteration}.json")
                 try:
-                    with open(response_file, 'w') as f:
+                    with open(response_file, 'w', encoding='utf-8') as f:
                         import json
-                        json.dump(response_data, f, indent=2)
+                        json.dump(response_data, f, indent=2, ensure_ascii=False)
                     print(f"[Thread {thread_id}] Response saved to: {response_file}")
                 except Exception as e:
                     print(f"[Thread {thread_id}] Error saving response: {e}")
-                    
-                # 保存带时间戳的截图副本
-                timestamp_str = time.strftime("%Y%m%d_%H%M%S")
-                timestamped_screenshot = os.path.join(response_folder, f"screenshot_{iteration}_{timestamp_str}.png")
-                try:
-                    import shutil
-                    shutil.copy2(screenshot_path, timestamped_screenshot)
-                except Exception as e:
-                    print(f"[Thread {thread_id}] Error saving timestamped screenshot: {e}")
 
             # 是否打印详细输出
             if verbose_output:
                 print(f"\n[Thread {thread_id}] === DETAILED MODEL RESPONSE (Iteration {iteration}) ===")
-                print(f"Prompt length: {len(tetris_prompt)} characters")
                 print(f"Response length: {len(generated_code_str)} characters")
                 print(f"Full response:\n{'='*80}\n{generated_code_str}\n{'='*80}\n")
             else:
@@ -426,11 +364,10 @@ The speed it drops is at around ~0.75s/grid bock.
             if should_stop():
                 print(f"[Thread {thread_id}] Stop flag detected before code execution. Exiting...")
                 break
-
+            
             # Extract Python code for execution
             print(f"[Thread {thread_id}] Extracting Python code from response...")
             clean_code = extract_python_code(generated_code_str)
-            log_output(thread_id, f"[Thread {thread_id}] Python code to be executed:\n{clean_code}\n", "tetris")
             print(f"[Thread {thread_id}] Python code to be executed:\n{clean_code}\n")
 
             try:
@@ -438,19 +375,46 @@ The speed it drops is at around ~0.75s/grid bock.
                 if should_stop():
                     print(f"[Thread {thread_id}] Stop flag detected before code execution. Exiting...")
                     break
+                
+                # 首先点击游戏窗口中心确保窗口激活
+                if region:
+                    left, top, width, height = region
+                    pyautogui.click(left + width // 2, top + height // 2)
+                    time.sleep(0.2)  # 等待窗口激活
                     
                 print(f"[Thread {thread_id}] Executing Python code...")
                 exec(clean_code)
                 print(f"[Thread {thread_id}] Code execution completed.")
             except Exception as e:
                 print(f"[Thread {thread_id}] Error executing code: {e}")
+                import traceback
+                traceback.print_exc()
                 
             print(f"[Thread {thread_id}] Cycle completed, beginning next cycle...")
+            
+            # 计算并等待到下一个计划周期
+            elapsed = time.time() - end_time  # 计算代码执行耗时
+            wait_time = max(0, plan_seconds - elapsed - latency)  # 减去API调用和代码执行的时间
+            print(f"[Thread {thread_id}] Waiting {wait_time:.2f}s until next cycle...")
+            
+            # 分段睡眠，以便能够及时响应停止信号
+            sleep_interval = 0.5  # 每0.5秒检查一次停止标志
+            for _ in range(int(wait_time / sleep_interval)):
+                if should_stop():
+                    break
+                time.sleep(sleep_interval)
+            
+            # 处理可能的小数部分
+            remainder = wait_time % sleep_interval
+            if remainder > 0 and not should_stop():
+                time.sleep(remainder)
 
     except KeyboardInterrupt:
         print(f"[Thread {thread_id}] Interrupted by user. Exiting...")
     except Exception as e:
         print(f"[Thread {thread_id}] Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         print(f"[Thread {thread_id}] Thread execution completed.")
 
@@ -458,9 +422,11 @@ The speed it drops is at around ~0.75s/grid bock.
     if save_responses and thread_responses:
         all_responses_file = os.path.join(output_dir, f"all_responses_thread_{thread_id}.json")
         try:
-            with open(all_responses_file, 'w') as f:
+            with open(all_responses_file, 'w', encoding='utf-8') as f:
                 import json
-                json.dump(thread_responses, f, indent=2)
+                json.dump(thread_responses, f, indent=2, ensure_ascii=False)
             print(f"[Thread {thread_id}] All responses saved to: {all_responses_file}")
         except Exception as e:
             print(f"[Thread {thread_id}] Error saving all responses: {e}")
+    
+    return 0
