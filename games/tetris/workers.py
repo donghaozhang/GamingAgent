@@ -38,6 +38,13 @@ def worker_tetris(
     api_provider,
     model_name,
     plan_seconds,
+    verbose_output=False,
+    save_responses=False,
+    output_dir="model_responses",
+    responses_dict=None,
+    manual_window_region=None,
+    debug_pause=False,  # 添加调试暂停选项，默认为False
+    stop_flag=None      # 停止标志，可以是布尔值引用或threading.Event
 ):
     """
     A single Tetris worker that plans moves for 'plan_seconds'.
@@ -47,8 +54,46 @@ def worker_tetris(
         - Calls the LLM with a Tetris prompt that includes 'plan_seconds'
         - Extracts the Python code from the LLM output
         - Executes the code with `exec()`
+    
+    Args:
+        thread_id (int): Unique ID for this worker thread
+        offset (float): Initial sleep delay in seconds
+        system_prompt (str): System prompt for the LLM
+        api_provider (str): API provider to use (anthropic, openai, or gemini)
+        model_name (str): Model name to use
+        plan_seconds (float): Number of seconds to plan for
+        verbose_output (bool): Whether to print detailed model responses
+        save_responses (bool): Whether to save model responses to files
+        output_dir (str): Directory to save model responses
+        responses_dict (dict): Shared dictionary to store responses across threads
+        manual_window_region (tuple): Manually specified window region (left, top, width, height)
+        debug_pause (bool): Whether to pause for debugging
+        stop_flag: Stop flag, can be a boolean reference or threading.Event
     """
     all_response_time = []
+    thread_responses = []
+    
+    # 初始化检查停止标志的函数
+    def should_stop():
+        if stop_flag is None:
+            return False
+        # 如果是threading.Event，调用is_set()
+        if hasattr(stop_flag, 'is_set'):
+            return stop_flag.is_set()
+        # 否则当作布尔值处理
+        return bool(stop_flag)
+    
+    # Initialize this thread in the shared responses dictionary if tracking responses
+    if responses_dict is not None:
+        responses_dict["threads"][str(thread_id)] = {
+            "start_time": time.time(),
+            "responses": []
+        }
+
+    # 检查是否已经被要求停止
+    if should_stop():
+        print(f"[Thread {thread_id}] Stop flag already set. Thread not starting.")
+        return
 
     time.sleep(offset)
     print(f"[Thread {thread_id}] Starting after {offset}s delay... (Plan: {plan_seconds} seconds)")
@@ -84,10 +129,16 @@ The speed it drops is at around ~0.75s/grid bock.
 - Include brief comments for each action.
 - Do not print anything else besides these Python commands.
     """
+    
+    # 只在启动时打印提示信息，而不是每次迭代都打印
+    print(f"[Thread {thread_id}] Using Tetris prompt with {plan_seconds}s planning time.")
+    if verbose_output:
+        print(f"[Thread {thread_id}] Full prompt: {tetris_prompt}")
 
     try:
         iteration = 0
-        while True:
+        # 主循环
+        while not should_stop():
             iteration += 1
             print(f"\n[Thread {thread_id}] === Iteration {iteration} ===\n")
             
@@ -103,22 +154,35 @@ The speed it drops is at around ~0.75s/grid bock.
             fullscreen.save(fullscreen_path)
             print(f"[Thread {thread_id}] Full screen screenshot saved to: {fullscreen_path}")
             
-            # Try to capture the Tetris window specifically
-            tetris_region = find_tetris_window()
-            
-            if tetris_region:
-                # Use the detected Tetris window region
-                screenshot = pyautogui.screenshot(region=tetris_region)
-                print(f"[Thread {thread_id}] Capturing Tetris window at region: {tetris_region}")
-                region_type = "tetris_window"
-            else:
-                # Fallback to the default method
-                print(f"[Thread {thread_id}] No Tetris window found. Using default region.")
-                screen_width, screen_height = pyautogui.size()
-                region = (0, 0, screen_width // 64 * 18, screen_height // 64 * 40)
+            # 确定窗口区域 - 优先使用手动指定的区域
+            if manual_window_region:
+                # 使用手动指定的窗口区域
+                region = manual_window_region
+                print(f"[Thread {thread_id}] Using manually specified window region: {region}")
                 screenshot = pyautogui.screenshot(region=region)
-                print(f"[Thread {thread_id}] Using default region: {region}, Screen size: {screen_width}x{screen_height}")
-                region_type = "default_region"
+                region_type = "manual_region"
+            else:
+                # 尝试自动检测窗口
+                tetris_region = find_tetris_window()
+                
+                if tetris_region:
+                    # Use the detected Tetris window region
+                    screenshot = pyautogui.screenshot(region=tetris_region)
+                    print(f"[Thread {thread_id}] Capturing Tetris window at region: {tetris_region}")
+                    region_type = "tetris_window"
+                else:
+                    # Fallback to the default method
+                    print(f"[Thread {thread_id}] No Tetris window found. Using default region.")
+                    screen_width, screen_height = pyautogui.size()
+                    region = (0, 0, screen_width // 64 * 18, screen_height // 64 * 40)
+                    screenshot = pyautogui.screenshot(region=region)
+                    print(f"[Thread {thread_id}] Using default region: {region}, Screen size: {screen_width}x{screen_height}")
+                    region_type = "default_region"
+
+            # 再次检查停止标志
+            if should_stop():
+                print(f"[Thread {thread_id}] Stop flag detected after window detection. Exiting...")
+                break
 
             # 添加调试信息到截图上
             draw = ImageDraw.Draw(screenshot)
@@ -187,14 +251,25 @@ The speed it drops is at around ~0.75s/grid bock.
                 except Exception as e:
                     print(f"[Thread {thread_id}] Alternative screenshot method failed: {e}")
 
+            # 如果是保存响应，为当前iteration创建一个唯一的文件夹
+            if save_responses:
+                response_folder = os.path.join(output_dir, f"thread_{thread_id}")
+                os.makedirs(response_folder, exist_ok=True)
+
+            # 再次检查停止标志
+            if should_stop():
+                print(f"[Thread {thread_id}] Stop flag detected before API call. Exiting...")
+                break
+
             # Encode the screenshot
             base64_image = encode_image(screenshot_path)
             print(f"[Thread {thread_id}] Screenshot encoded, preparing to call API...")
 
-            # DEBUG: 在继续处理前暂停几秒，让用户检查日志
-            print(f"[Thread {thread_id}] DEBUG: Pausing for 5 seconds to allow log inspection...")
-            time.sleep(5)
-
+            # 调试暂停，仅在启用时执行
+            if debug_pause:
+                print(f"[Thread {thread_id}] DEBUG: Pausing for 5 seconds to allow log inspection...")
+                time.sleep(5)
+            
             start_time = time.time()
             if api_provider == "anthropic":
                 print(f"[Thread {thread_id}] Calling Anthropic API with model {model_name}...")
@@ -217,7 +292,61 @@ The speed it drops is at around ~0.75s/grid bock.
             print(f"[Thread {thread_id}] Latencies: {all_response_time}")
             print(f"[Thread {thread_id}] Average latency: {avg_latency:.2f}s\n")
 
-            print(f"[Thread {thread_id}] --- API output ---\n{generated_code_str}\n")
+            # 再次检查停止标志
+            if should_stop():
+                print(f"[Thread {thread_id}] Stop flag detected after API call. Exiting...")
+                break
+                
+            # 保存响应数据
+            response_data = {
+                "iteration": iteration,
+                "timestamp": time.time(),
+                "latency": latency,
+                "prompt": tetris_prompt,
+                "full_response": generated_code_str,
+            }
+            
+            # 添加到线程响应列表
+            thread_responses.append(response_data)
+            
+            # 如果使用共享响应字典，也添加到那里
+            if responses_dict is not None:
+                responses_dict["threads"][str(thread_id)]["responses"].append(response_data)
+            
+            # 如果需要保存响应
+            if save_responses:
+                response_file = os.path.join(response_folder, f"response_{iteration}.json")
+                try:
+                    with open(response_file, 'w') as f:
+                        import json
+                        json.dump(response_data, f, indent=2)
+                    print(f"[Thread {thread_id}] Response saved to: {response_file}")
+                except Exception as e:
+                    print(f"[Thread {thread_id}] Error saving response: {e}")
+                    
+                # 保存带时间戳的截图副本
+                timestamp_str = time.strftime("%Y%m%d_%H%M%S")
+                timestamped_screenshot = os.path.join(response_folder, f"screenshot_{iteration}_{timestamp_str}.png")
+                try:
+                    import shutil
+                    shutil.copy2(screenshot_path, timestamped_screenshot)
+                except Exception as e:
+                    print(f"[Thread {thread_id}] Error saving timestamped screenshot: {e}")
+
+            # 是否打印详细输出
+            if verbose_output:
+                print(f"\n[Thread {thread_id}] === DETAILED MODEL RESPONSE (Iteration {iteration}) ===")
+                print(f"Prompt length: {len(tetris_prompt)} characters")
+                print(f"Response length: {len(generated_code_str)} characters")
+                print(f"Full response:\n{'='*80}\n{generated_code_str}\n{'='*80}\n")
+            else:
+                # 只打印响应的简短版本
+                print(f"[Thread {thread_id}] --- API output ---\n{generated_code_str[:200]}...\n[truncated]\n")
+
+            # 再次检查停止标志
+            if should_stop():
+                print(f"[Thread {thread_id}] Stop flag detected before code execution. Exiting...")
+                break
 
             # Extract Python code for execution
             print(f"[Thread {thread_id}] Extracting Python code from response...")
@@ -226,6 +355,11 @@ The speed it drops is at around ~0.75s/grid bock.
             print(f"[Thread {thread_id}] Python code to be executed:\n{clean_code}\n")
 
             try:
+                # 在执行代码前最后检查一次停止标志
+                if should_stop():
+                    print(f"[Thread {thread_id}] Stop flag detected before code execution. Exiting...")
+                    break
+                    
                 print(f"[Thread {thread_id}] Executing Python code...")
                 exec(clean_code)
                 print(f"[Thread {thread_id}] Code execution completed.")
@@ -236,3 +370,18 @@ The speed it drops is at around ~0.75s/grid bock.
 
     except KeyboardInterrupt:
         print(f"[Thread {thread_id}] Interrupted by user. Exiting...")
+    except Exception as e:
+        print(f"[Thread {thread_id}] Unexpected error: {e}")
+    finally:
+        print(f"[Thread {thread_id}] Thread execution completed.")
+
+    # 最后保存此线程的所有响应，如果要求保存的话
+    if save_responses and thread_responses:
+        all_responses_file = os.path.join(output_dir, f"all_responses_thread_{thread_id}.json")
+        try:
+            with open(all_responses_file, 'w') as f:
+                import json
+                json.dump(thread_responses, f, indent=2)
+            print(f"[Thread {thread_id}] All responses saved to: {all_responses_file}")
+        except Exception as e:
+            print(f"[Thread {thread_id}] Error saving all responses: {e}")
