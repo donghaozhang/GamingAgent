@@ -33,65 +33,154 @@ def find_tetris_window(window_title_keywords=None):
             "Game", "game", "Play"
         ]
     
-    # 要排除的窗口标题关键词
-    exclude_keywords = [
-        "Cursor", "cursor",  # 编辑器窗口
-        "Chrome", "Edge", "Firefox",  # 浏览器窗口
-        ".py", "code", "Code",  # 代码文件
-        "Terminal", "Console", "PowerShell", "cmd"  # 终端窗口
-    ]
+    # 为了调试，输出所有可用窗口
+    print("DEBUG: All available windows:")
     
-    # DEBUG: 列出所有可用窗口
-    all_windows = pyautogui.getAllWindows()
-    print(f"DEBUG: All available windows:")
-    for w in all_windows:
-        print(f"  - '{w.title}' at {w.left}, {w.top}, {w.width}, {w.height}")
-    
-    # 1. 首先尝试通过关键词标题匹配
-    for window in all_windows:
-        # 检查窗口标题是否包含关键词
-        if any(keyword.lower() in window.title.lower() for keyword in window_title_keywords):
-            # 检查是否是排除的窗口类型
-            excluded = False
-            for keyword in exclude_keywords:
-                if keyword in window.title:
-                    excluded = True
-                    break
-            
-            if not excluded:
-                print(f"Found matching window: {window.title} at {window.left}, {window.top}, {window.width}, {window.height}")
-                return (window.left, window.top, window.width, window.height)
-    
-    # 2. 尝试查找小窗口，宽高比接近正方形（Tetris通常是接近正方形的窗口）
-    game_candidates = []
-    for window in all_windows:
-        # 检查是否是排除的窗口类型
-        excluded = False
-        for keyword in exclude_keywords:
-            if keyword in window.title:
-                excluded = True
-                break
+    try:
+        # 先尝试使用pygetwindow
+        import pygetwindow as gw
         
-        if excluded:
-            continue
+        # 列出所有窗口，用于调试
+        all_windows = gw.getAllWindows()
+        for win in all_windows:
+            # 打印每个窗口的标题和位置
+            print(f"  - '{win.title}' at {win.left}, {win.top}, {win.width}, {win.height}")
+        
+        # 尝试匹配窗口标题
+        for keyword in window_title_keywords:
+            matching_windows = [win for win in all_windows if keyword in win.title]
+            if matching_windows:
+                window = matching_windows[0]  # 使用第一个匹配的窗口
+                # 确保坐标是有效的，不是负数
+                left = max(0, window.left)
+                top = max(0, window.top)
+                print(f"Found matching window: {window.title} at {window.left}, {window.top}, {window.width}, {window.height}")
+                
+                # 检查窗口是否可见
+                if window.isMinimized:
+                    print(f"Window '{window.title}' is minimized, trying to restore...")
+                    try:
+                        window.restore()
+                        window.activate()
+                    except Exception as e:
+                        print(f"Failed to restore window: {e}")
+                
+                # 窗口可能在屏幕外或有负坐标，调整为有效值
+                # 获取屏幕尺寸
+                screen_width, screen_height = pyautogui.size()
+                
+                # 确保窗口在屏幕内，并且坐标不是负数
+                left = max(0, min(left, screen_width - 100))
+                top = max(0, min(top, screen_height - 100))
+                width = min(window.width, screen_width - left)
+                height = min(window.height, screen_height - top)
+                
+                return (left, top, width, height)
+        
+        print("DEBUG: No window matching Tetris criteria was found")
+    except ImportError:
+        print("pygetwindow not available, using alternative window detection")
+    except Exception as e:
+        print(f"Error finding window: {e}")
+    
+    # 如果PyGetWindow不可用或者找不到窗口，使用其他方法
+    try:
+        # 使用PyAutoGUI直接寻找
+        import pyautogui
+        
+        # 获取屏幕尺寸
+        screen_width, screen_height = pyautogui.size()
+        
+        # 尝试查找标题中包含关键词的窗口
+        windows = pyautogui.getAllWindows()
+        for window in windows:
+            for keyword in window_title_keywords:
+                if keyword.lower() in window.title.lower():
+                    print(f"Found matching window using pyautogui: {window.title}")
+                    # 获取窗口位置
+                    left, top, width, height = window.left, window.top, window.width, window.height
+                    
+                    # 检查坐标是否合法（不是负数）
+                    left = max(0, min(left, screen_width - 100))
+                    top = max(0, min(top, screen_height - 100))
+                    width = min(width, screen_width - left)
+                    height = min(height, screen_height - top)
+                    
+                    return (left, top, width, height)
+    except (ImportError, AttributeError):
+        # PyAutoGUI的getAllWindows()在某些平台上可能不可用
+        print("pyautogui.getAllWindows() not available")
+    except Exception as e:
+        print(f"Error using pyautogui for window detection: {e}")
+    
+    # 如果上述方法都失败，尝试使用一个合理的默认值
+    # 这依赖于Tetris游戏通常会在一个固定位置启动
+    print("Using default window region as fallback")
+    default_left = 100
+    default_top = 100
+    default_width = 400  # 适合大多数Tetris游戏
+    default_height = 600  # 适合大多数Tetris游戏
+    
+    return (default_left, default_top, default_width, default_height)
+
+def safe_screenshot(region, thread_id=0, output_dir="model_responses"):
+    """
+    安全地截取屏幕区域，确保坐标有效
+    
+    Args:
+        region: 要截取的区域 (left, top, width, height)
+        thread_id: 线程ID，用于命名截图文件
+        output_dir: 保存截图的目录
+        
+    Returns:
+        tuple: (截图路径, 截图对象)
+    """
+    try:
+        left, top, width, height = region
+        
+        # 确保坐标是有效的正数
+        screen_width, screen_height = pyautogui.size()
+        left = max(0, min(left, screen_width - 100))
+        top = max(0, min(top, screen_height - 100))
+        width = min(width, screen_width - left)
+        height = min(height, screen_height - top)
+        
+        # 确保宽度和高度至少为10像素
+        width = max(10, width)
+        height = max(10, height)
+        
+        print(f"Taking screenshot of region: ({left}, {top}, {width}, {height})")
+        
+        # 使用pyautogui截图
+        screenshot = pyautogui.screenshot(region=(left, top, width, height))
+        
+        # 创建目录保存截图
+        thread_folder = os.path.join(output_dir, f"thread_{thread_id}")
+        os.makedirs(thread_folder, exist_ok=True)
+        
+        # 保存截图
+        screenshot_path = os.path.join(thread_folder, f"screenshot_iter_{int(time.time())}.png")
+        screenshot.save(screenshot_path)
+        
+        # 检查图像是否全黑或全白
+        img_array = np.array(screenshot)
+        is_black = np.mean(img_array) < 10
+        is_white = np.mean(img_array) > 245
+        
+        if is_black:
+            print("Warning: Screenshot appears to be completely black")
+        elif is_white:
+            print("Warning: Screenshot appears to be completely white")
             
-        # 只查找中等大小的窗口（Pygame窗口通常不会很大）
-        if 200 <= window.width <= 800 and 200 <= window.height <= 800:
-            # 计算宽高比，寻找接近游戏窗口的比例
-            aspect_ratio = window.width / window.height
-            if 0.5 <= aspect_ratio <= 1.2:  # 俄罗斯方块游戏窗口通常接近正方形或稍微高一些
-                game_candidates.append((window, abs(aspect_ratio - 0.8)))
-    
-    # 如果找到候选窗口，使用最接近0.8宽高比的窗口
-    if game_candidates:
-        # 按宽高比接近0.8(典型Tetris比例)排序
-        game_candidates.sort(key=lambda x: x[1])
-        best_window = game_candidates[0][0]
-        print(f"Found potential game window by aspect ratio: {best_window.title} at {best_window.left}, {best_window.top}, {best_window.width}, {best_window.height}")
-        return (best_window.left, best_window.top, best_window.width, best_window.height)
-    
-    print("DEBUG: No window matching Tetris criteria was found")
-    return None
+        return screenshot_path, screenshot
+    except Exception as e:
+        print(f"Error taking screenshot: {e}")
+        # 返回一个空白图像
+        blank_img = Image.new('RGB', (400, 600), color=(255, 255, 255))
+        blank_path = os.path.join(output_dir, f"thread_{thread_id}", f"blank_screenshot_{int(time.time())}.png")
+        os.makedirs(os.path.dirname(blank_path), exist_ok=True)
+        blank_img.save(blank_path)
+        return blank_path, blank_img
 
 def worker_tetris(
     thread_id,
@@ -215,7 +304,6 @@ The speed it drops is at around ~0.75s/grid bock.
                 # 使用手动指定的窗口区域
                 region = manual_window_region
                 print(f"[Thread {thread_id}] Using manually specified window region: {region}")
-                screenshot = pyautogui.screenshot(region=region)
                 region_type = "manual_region"
                 window_missing_count = 0  # 重置计数
             else:
@@ -225,7 +313,6 @@ The speed it drops is at around ~0.75s/grid bock.
                 if tetris_region:
                     # Use the detected Tetris window region
                     region = tetris_region
-                    screenshot = pyautogui.screenshot(region=region)
                     print(f"[Thread {thread_id}] Capturing Tetris window at region: {region}")
                     region_type = "tetris_window"
                     window_missing_count = 0  # 重置计数
@@ -247,8 +334,7 @@ The speed it drops is at around ~0.75s/grid bock.
                     
                     # Fallback to the default method
                     screen_width, screen_height = pyautogui.size()
-                    region = (0, 0, screen_width // 64 * 18, screen_height // 64 * 40)
-                    screenshot = pyautogui.screenshot(region=region)
+                    region = (100, 100, 400, 600)  # 使用一个更可靠的默认值
                     print(f"[Thread {thread_id}] Using default region: {region}, Screen size: {screen_width}x{screen_height}")
                     region_type = "default_region"
 
@@ -257,25 +343,37 @@ The speed it drops is at around ~0.75s/grid bock.
                 print(f"[Thread {thread_id}] Stop flag detected after window detection. Exiting...")
                 break
 
-            # 保存截图和处理图像增强的代码
-            # 创建一个临时目录来存储截图
-            thread_folder = os.path.join(output_dir, f"thread_{thread_id}")
-            os.makedirs(thread_folder, exist_ok=True)
-            
-            # 添加调试信息到截图上
-            draw = ImageDraw.Draw(screenshot)
-            # 添加红色边框
-            draw.rectangle([(0, 0), (screenshot.width-1, screenshot.height-1)], outline="red", width=3)
-            
-            # 保存截图
-            screenshot_path = os.path.join(thread_folder, f"screenshot_iter_{iteration}.png")
-            screenshot.save(screenshot_path)
-            print(f"[Thread {thread_id}] Screenshot saved to: {screenshot_path}")
+            # 使用安全截图功能截取屏幕
+            try:
+                screenshot_path, screenshot = safe_screenshot(
+                    region, 
+                    thread_id=thread_id, 
+                    output_dir=output_dir
+                )
+                print(f"[Thread {thread_id}] Screenshot saved to: {screenshot_path}")
+                
+                # 添加红色边框和线程ID标记，便于调试
+                draw = ImageDraw.Draw(screenshot)
+                draw.rectangle([(0, 0), (screenshot.width-1, screenshot.height-1)], outline="red", width=3)
+                # 添加文本（如果可能）
+                try:
+                    # 添加文本(在有PIL.ImageFont的环境中)
+                    draw.text((10, 10), f"Thread {thread_id}", fill="red")
+                except Exception as e:
+                    print(f"[Thread {thread_id}] Could not add text to screenshot: {e}")
+                
+                # 保存带标记的截图
+                screenshot.save(screenshot_path)
+                
+                # 获取截图的Base64编码
+                base64_image = encode_image(screenshot_path)
+                print(f"[Thread {thread_id}] Screenshot encoded, preparing to call API...")
+            except Exception as e:
+                print(f"[Thread {thread_id}] Error processing screenshot: {e}")
+                # 继续到下一个迭代
+                time.sleep(5)
+                continue
 
-            # 获取截图的Base64编码
-            base64_image = encode_image(screenshot_path)
-            print(f"[Thread {thread_id}] Screenshot encoded, preparing to call API...")
-            
             # 如果启用了调试暂停，等待一段时间
             if debug_pause:
                 print(f"[Thread {thread_id}] DEBUG: Pausing for 5 seconds to allow log inspection...")
@@ -342,6 +440,8 @@ The speed it drops is at around ~0.75s/grid bock.
                 
             # 如果需要保存响应
             if save_responses:
+                thread_folder = os.path.join(output_dir, f"thread_{thread_id}")
+                os.makedirs(thread_folder, exist_ok=True)
                 response_file = os.path.join(thread_folder, f"response_{iteration}.json")
                 try:
                     with open(response_file, 'w', encoding='utf-8') as f:
@@ -379,12 +479,51 @@ The speed it drops is at around ~0.75s/grid bock.
                 # 首先点击游戏窗口中心确保窗口激活
                 if region:
                     left, top, width, height = region
-                    pyautogui.click(left + width // 2, top + height // 2)
-                    time.sleep(0.2)  # 等待窗口激活
+                    try:
+                        pyautogui.click(left + width // 2, top + height // 2)
+                        time.sleep(0.2)  # 等待窗口激活
+                    except Exception as e:
+                        print(f"[Thread {thread_id}] Error activating window: {e}")
+                
+                # 检查代码是否是有效的Python代码
+                # 如果模型没有返回可执行的Python代码，我们需要创建一个安全的替代代码
+                try:
+                    # 尝试编译代码，看是否有语法错误
+                    compile(clean_code, '<string>', 'exec')
+                    # 如果没有语法错误，执行代码
+                    print(f"[Thread {thread_id}] Executing Python code...")
+                    exec(clean_code)
+                    print(f"[Thread {thread_id}] Code execution completed.")
+                except SyntaxError:
+                    # 代码有语法错误，模型可能返回了纯文本回应
+                    print(f"[Thread {thread_id}] Syntax error in code. Using fallback random moves.")
                     
-                print(f"[Thread {thread_id}] Executing Python code...")
-                exec(clean_code)
-                print(f"[Thread {thread_id}] Code execution completed.")
+                    # 使用随机移动作为替代
+                    fallback_code = """
+# Fallback code: Random Tetris moves
+import pyautogui
+import time
+import random
+
+# Random actions
+possible_actions = ['left', 'right', 'up', 'space']
+actions_to_take = random.sample(possible_actions, k=min(3, len(possible_actions)))
+
+for action in actions_to_take:
+    print(f"Pressing {action}")
+    pyautogui.press(action)
+    time.sleep(0.3)
+
+# Always try to drop at the end
+if 'space' not in actions_to_take:
+    print("Dropping piece")
+    pyautogui.press('space')
+"""
+                    print(f"[Thread {thread_id}] Executing fallback code:")
+                    print(fallback_code)
+                    exec(fallback_code)
+                    print(f"[Thread {thread_id}] Fallback code execution completed.")
+                
             except Exception as e:
                 print(f"[Thread {thread_id}] Error executing code: {e}")
                 import traceback
