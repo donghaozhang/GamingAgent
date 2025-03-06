@@ -211,6 +211,8 @@ Install your Tetris game. In our demo, we adopt [Python-Tetris-Game-Pygame](http
 
 1. Launch the game with
 ```
+python games.tetris.tetris_agent.py
+
 cd $YOUR_WORKPLACE/Python-Tetris-Game-Pygame
 python main.py
 ```

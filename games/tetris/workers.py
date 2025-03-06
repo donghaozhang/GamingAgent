@@ -2,6 +2,7 @@ import time
 import os
 import pyautogui
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont  # 添加绘图功能
 
 from tools.utils import encode_image, log_output, extract_python_code
 from tools.serving.api_providers import anthropic_completion, openai_completion, gemini_completion
@@ -15,10 +16,18 @@ def find_tetris_window():
     # Try to find the Tetris window
     windows = pyautogui.getWindowsWithTitle("Tetris")
     
+    # DEBUG: 列出所有可用窗口
+    all_windows = pyautogui.getAllWindows()
+    print(f"DEBUG: All available windows:")
+    for w in all_windows:
+        print(f"  - '{w.title}' at {w.left}, {w.top}, {w.width}, {w.height}")
+    
     if windows:
         window = windows[0]  # Get the first window with "Tetris" in the title
         print(f"Found Tetris window: {window.title} at {window.left}, {window.top}, {window.width}, {window.height}")
         return (window.left, window.top, window.width, window.height)
+    else:
+        print("DEBUG: No window with 'Tetris' in title was found")
     
     return None
 
@@ -77,31 +86,114 @@ The speed it drops is at around ~0.75s/grid bock.
     """
 
     try:
+        iteration = 0
         while True:
+            iteration += 1
+            print(f"\n[Thread {thread_id}] === Iteration {iteration} ===\n")
+            
+            # 首先保存一个全屏截图，用于对比参考
+            fullscreen = pyautogui.screenshot()
+            
+            # Create a unique folder for this thread's cache
+            thread_folder = f"cache/tetris/thread_{thread_id}"
+            os.makedirs(thread_folder, exist_ok=True)
+            
+            # 保存全屏截图以供分析
+            fullscreen_path = os.path.join(thread_folder, "fullscreen.png")
+            fullscreen.save(fullscreen_path)
+            print(f"[Thread {thread_id}] Full screen screenshot saved to: {fullscreen_path}")
+            
             # Try to capture the Tetris window specifically
             tetris_region = find_tetris_window()
             
             if tetris_region:
                 # Use the detected Tetris window region
                 screenshot = pyautogui.screenshot(region=tetris_region)
-                print(f"[Thread {thread_id}] Capturing Tetris window")
+                print(f"[Thread {thread_id}] Capturing Tetris window at region: {tetris_region}")
+                region_type = "tetris_window"
             else:
                 # Fallback to the default method
                 print(f"[Thread {thread_id}] No Tetris window found. Using default region.")
                 screen_width, screen_height = pyautogui.size()
                 region = (0, 0, screen_width // 64 * 18, screen_height // 64 * 40)
                 screenshot = pyautogui.screenshot(region=region)
+                print(f"[Thread {thread_id}] Using default region: {region}, Screen size: {screen_width}x{screen_height}")
+                region_type = "default_region"
 
-            # Create a unique folder for this thread's cache
-            thread_folder = f"cache/tetris/thread_{thread_id}"
-            os.makedirs(thread_folder, exist_ok=True)
+            # 添加调试信息到截图上
+            draw = ImageDraw.Draw(screenshot)
+            # 添加红色边框
+            draw.rectangle([(0, 0), (screenshot.width-1, screenshot.height-1)], outline="red", width=3)
+            # 添加文本信息
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            debug_text = f"Thread {thread_id} | {timestamp} | {region_type}"
+            try:
+                # 尝试添加文本（如果没有字体，可能会失败，但不影响主流程）
+                draw.text((10, 10), debug_text, fill="red")
+            except Exception as e:
+                print(f"[Thread {thread_id}] Could not add text to image: {e}")
 
             screenshot_path = os.path.join(thread_folder, "screenshot.png")
             screenshot.save(screenshot_path)
+            
+            # 同时保存一个带有迭代号的截图，便于对比历史记录
+            iter_screenshot_path = os.path.join(thread_folder, f"screenshot_iter_{iteration}.png")
+            screenshot.save(iter_screenshot_path)
+            print(f"[Thread {thread_id}] Also saved iteration-specific screenshot to: {iter_screenshot_path}")
+            
+            # 检查图像是否全黑或全白
+            img = Image.open(screenshot_path)
+            img_array = np.array(img)
+            
+            # 检查图像是否全黑
+            is_black = np.all(img_array < 10)
+            # 检查图像是否全白
+            is_white = np.all(img_array > 245)
+            # 检查图像统计信息
+            avg_pixel = np.mean(img_array)
+            std_pixel = np.std(img_array)
+            
+            print(f"[Thread {thread_id}] Screenshot analysis:")
+            print(f"  - Size: {img.width}x{img.height}")
+            print(f"  - All black: {is_black}")
+            print(f"  - All white: {is_white}")
+            print(f"  - Average pixel value: {avg_pixel:.2f}")
+            print(f"  - Pixel standard deviation: {std_pixel:.2f}")
+            print(f"  - Screenshot saved to: {screenshot_path}")
+            
+            # 如果图像全黑或全白，发出警告
+            if is_black or is_white:
+                print(f"[Thread {thread_id}] WARNING: Screenshot appears to be {'black' if is_black else 'white'} only!")
+                print(f"[Thread {thread_id}] This may indicate a problem with window detection or permissions.")
+                
+                # 尝试使用PIL直接截图（替代方案）
+                print(f"[Thread {thread_id}] Attempting alternative screenshot method...")
+                try:
+                    from PIL import ImageGrab
+                    alt_screenshot = ImageGrab.grab(bbox=tetris_region if tetris_region else region)
+                    alt_path = os.path.join(thread_folder, "alt_screenshot.png")
+                    alt_screenshot.save(alt_path)
+                    print(f"[Thread {thread_id}] Alternative screenshot saved to: {alt_path}")
+                    
+                    # 分析替代截图
+                    alt_img_array = np.array(alt_screenshot)
+                    alt_is_black = np.all(alt_img_array < 10)
+                    print(f"[Thread {thread_id}] Alternative screenshot is all black: {alt_is_black}")
+                    
+                    if not alt_is_black:
+                        print(f"[Thread {thread_id}] Using alternative screenshot instead!")
+                        screenshot = alt_screenshot
+                        screenshot.save(screenshot_path)
+                except Exception as e:
+                    print(f"[Thread {thread_id}] Alternative screenshot method failed: {e}")
 
             # Encode the screenshot
             base64_image = encode_image(screenshot_path)
             print(f"[Thread {thread_id}] Screenshot encoded, preparing to call API...")
+
+            # DEBUG: 在继续处理前暂停几秒，让用户检查日志
+            print(f"[Thread {thread_id}] DEBUG: Pausing for 5 seconds to allow log inspection...")
+            time.sleep(5)
 
             start_time = time.time()
             if api_provider == "anthropic":
