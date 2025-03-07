@@ -92,6 +92,13 @@ class TetrisClaudeIterator:
         self.responses_dir = os.path.join(self.session_dir, "responses")
         self.manual_window_position = None
         
+        # Simulation mode flag and state
+        self.use_simulated_board = True  # Default to True now
+        self.simulated_board = None
+        self.board_state = None
+        self.current_piece = None
+        self.next_piece = None
+        
         # Create output directories
         os.makedirs(self.screenshots_dir, exist_ok=True)
         os.makedirs(self.responses_dir, exist_ok=True)
@@ -191,8 +198,269 @@ Here's the current Tetris game state image:
             screen_width, screen_height = pyautogui.size()
             return 0, 0, int(screen_width * 0.4), screen_height
 
+    def create_simulated_tetris_board(self, board_state=None, current_piece=None, next_piece=None):
+        """
+        Create a simulated Tetris board image
+        
+        Args:
+            board_state: 2D list representing the board state (0=empty, 1-7=piece colors)
+            current_piece: Dict with 'type', 'x', 'y', 'rotation'
+            next_piece: Dict with 'type'
+            
+        Returns:
+            PIL.Image: Simulated Tetris board image
+        """
+        # Store the board state and pieces for later use
+        if board_state is not None:
+            self.board_state = board_state
+        if current_piece is not None:
+            self.current_piece = current_piece
+        if next_piece is not None:
+            self.next_piece = next_piece
+            
+        # If any are still None, initialize with defaults
+        if self.board_state is None:
+            self.board_state = [[0 for _ in range(10)] for _ in range(20)]
+        if self.current_piece is None:
+            self.current_piece = {
+                'type': 'T',
+                'x': 4,
+                'y': 0,
+                'rotation': 0
+            }
+        if self.next_piece is None:
+            self.next_piece = {'type': 'I'}
+            
+        # Define colors for Tetris pieces
+        colors = {
+            0: (0, 0, 0),         # Empty (black)
+            1: (0, 240, 240),     # I - Cyan
+            2: (0, 0, 240),       # J - Blue
+            3: (240, 160, 0),     # L - Orange
+            4: (240, 240, 0),     # O - Yellow
+            5: (0, 240, 0),       # S - Green
+            6: (160, 0, 240),     # T - Purple
+            7: (240, 0, 0),       # Z - Red
+            8: (100, 100, 100),   # Ghost piece (gray)
+            9: (50, 50, 50)       # Grid line (dark gray)
+        }
+        
+        # Tetris piece shapes (different rotations)
+        piece_shapes = {
+            'I': [
+                [(0, 0), (1, 0), (2, 0), (3, 0)],  # Horizontal
+                [(1, -1), (1, 0), (1, 1), (1, 2)]  # Vertical
+            ],
+            'J': [
+                [(0, 0), (0, 1), (1, 1), (2, 1)],  # ┌──
+                [(1, 0), (2, 0), (1, 1), (1, 2)],  # │└─
+                [(0, 1), (1, 1), (2, 1), (2, 2)],  # ──┘
+                [(1, 0), (1, 1), (1, 2), (0, 2)]   # ─┐
+            ],                                       # └┘
+            'L': [
+                [(0, 1), (1, 1), (2, 1), (2, 0)],  # ──┐
+                [(1, 0), (1, 1), (1, 2), (2, 2)],  # └─┘
+                [(0, 1), (1, 1), (2, 1), (0, 2)],  # ┌──
+                [(0, 0), (1, 0), (1, 1), (1, 2)]   # │└─
+            ],
+            'O': [
+                [(0, 0), (1, 0), (0, 1), (1, 1)]   # Square
+            ],
+            'S': [
+                [(1, 0), (2, 0), (0, 1), (1, 1)],  # ─┐
+                [(1, 0), (1, 1), (2, 1), (2, 2)]   # └┘
+            ],
+            'T': [
+                [(1, 0), (0, 1), (1, 1), (2, 1)],  # ─┬─
+                [(1, 0), (1, 1), (2, 1), (1, 2)],  # └┼─
+                [(0, 1), (1, 1), (2, 1), (1, 2)],  # ─┼┘
+                [(1, 0), (0, 1), (1, 1), (1, 2)]   # ─┼┐
+            ],                                      # └┘
+            'Z': [
+                [(0, 0), (1, 0), (1, 1), (2, 1)],  # ┌─┐
+                [(2, 0), (1, 1), (2, 1), (1, 2)]   # └─┘
+            ]
+        }
+        
+        # Store piece shapes for movement simulation
+        self.piece_shapes = piece_shapes
+        
+        # Mapping from piece type to color index
+        piece_colors = {
+            'I': 1,
+            'J': 2,
+            'L': 3,
+            'O': 4,
+            'S': 5,
+            'T': 6,
+            'Z': 7
+        }
+        
+        # Store piece colors for later use
+        self.piece_colors = piece_colors
+        
+        # Create image (board + UI elements)
+        # Grid cell size in pixels
+        cell_size = 30
+        
+        # Main board dimensions
+        board_width = 10 * cell_size
+        board_height = 20 * cell_size
+        
+        # UI panel width
+        ui_width = 6 * cell_size
+        
+        # Total image dimensions
+        img_width = board_width + ui_width
+        img_height = board_height
+        
+        # Create blank image with black background
+        image = Image.new('RGB', (img_width, img_height), colors[0])
+        draw = ImageDraw.Draw(image)
+        
+        # Draw grid lines
+        for x in range(11):
+            x_pos = x * cell_size
+            draw.line([(x_pos, 0), (x_pos, board_height)], fill=colors[9], width=1)
+        
+        for y in range(21):
+            y_pos = y * cell_size
+            draw.line([(0, y_pos), (board_width, y_pos)], fill=colors[9], width=1)
+        
+        # Draw board state (existing pieces)
+        for y, row in enumerate(self.board_state):
+            for x, cell in enumerate(row):
+                if cell > 0:
+                    # Draw filled cell
+                    rect = [
+                        x * cell_size + 1,
+                        y * cell_size + 1,
+                        (x + 1) * cell_size - 1,
+                        (y + 1) * cell_size - 1
+                    ]
+                    draw.rectangle(rect, fill=colors[cell])
+        
+        # Draw current piece
+        if self.current_piece:
+            piece_type = self.current_piece['type']
+            rotation = self.current_piece.get('rotation', 0) % len(piece_shapes[piece_type])
+            x_offset = self.current_piece['x']
+            y_offset = self.current_piece['y']
+            
+            for x, y in piece_shapes[piece_type][rotation]:
+                rect = [
+                    (x_offset + x) * cell_size + 1,
+                    (y_offset + y) * cell_size + 1,
+                    (x_offset + x + 1) * cell_size - 1,
+                    (y_offset + y + 1) * cell_size - 1
+                ]
+                draw.rectangle(rect, fill=colors[piece_colors[piece_type]])
+        
+        # Draw UI panel
+        ui_start_x = board_width
+        
+        # Draw panel background
+        draw.rectangle([
+            ui_start_x, 0,
+            img_width, img_height
+        ], fill=(30, 30, 30))
+        
+        # Draw "NEXT" text
+        try:
+            font = ImageFont.truetype("arial.ttf", 20)
+        except:
+            font = ImageFont.load_default()
+        
+        draw.text((ui_start_x + 20, 20), "NEXT", fill=(255, 255, 255), font=font)
+        
+        # Draw next piece
+        if self.next_piece:
+            piece_type = self.next_piece['type']
+            next_piece_color = piece_colors[piece_type]
+            
+            # Center the piece in the next piece box
+            next_x = ui_start_x + ui_width // 2 - cell_size
+            next_y = 60
+            
+            # Draw only the first rotation
+            for x, y in piece_shapes[piece_type][0]:
+                rect = [
+                    next_x + x * cell_size + 1,
+                    next_y + y * cell_size + 1,
+                    next_x + (x + 1) * cell_size - 1,
+                    next_y + (y + 1) * cell_size - 1
+                ]
+                draw.rectangle(rect, fill=colors[next_piece_color])
+        
+        # Draw score or other UI elements
+        draw.text((ui_start_x + 10, 180), "SCORE", fill=(255, 255, 255), font=font)
+        draw.text((ui_start_x + 10, 210), "0", fill=(255, 255, 255), font=font)
+        
+        # Draw level
+        draw.text((ui_start_x + 10, 260), "LEVEL", fill=(255, 255, 255), font=font)
+        draw.text((ui_start_x + 10, 290), "1", fill=(255, 255, 255), font=font)
+        
+        # Add a watermark to indicate this is a simulated board
+        draw.text((ui_start_x + 10, img_height - 30), "SIMULATED", fill=(255, 100, 100), font=font)
+        
+        self.simulated_board = image
+        return image
+
+    def simulate_random_board_state(self, fill_percentage=30, max_height=15):
+        """
+        Generate a random board state for testing
+        
+        Args:
+            fill_percentage: Percentage of filled cells (0-100)
+            max_height: Maximum height of filled cells
+            
+        Returns:
+            tuple: (board_state, current_piece, next_piece)
+        """
+        import random
+        
+        # Generate random board
+        board = [[0 for _ in range(10)] for _ in range(20)]
+        
+        # Fill bottom part randomly
+        for y in range(20 - 1, 20 - max_height, -1):
+            for x in range(10):
+                if random.randint(1, 100) <= fill_percentage:
+                    # Random piece color (1-7)
+                    board[y][x] = random.randint(1, 7)
+        
+        # Make sure top few rows are empty for piece placement
+        for y in range(3):
+            for x in range(10):
+                board[y][x] = 0
+        
+        # Generate random current piece
+        piece_types = ['I', 'J', 'L', 'O', 'S', 'T', 'Z']
+        current_piece = {
+            'type': random.choice(piece_types),
+            'x': random.randint(2, 7),
+            'y': 0,
+            'rotation': random.randint(0, 3)
+        }
+        
+        # Generate random next piece
+        next_piece = {
+            'type': random.choice(piece_types)
+        }
+        
+        return board, current_piece, next_piece
+    
     def capture_screenshot(self):
         """Capture screenshot of the Tetris game"""
+        # If we're using a simulated board, return that instead
+        if self.use_simulated_board and self.simulated_board:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+            screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_simulated_iter_{self.iteration}.png")
+            self.simulated_board.save(screenshot_path)
+            self.log_message(f"Simulated Tetris board saved to: {screenshot_path}")
+            return screenshot_path, self.simulated_board
+            
+        # Otherwise capture a real screenshot
         try:
             # Find Tetris window
             region = self.find_tetris_window()
@@ -347,7 +615,7 @@ Here's the current Tetris game state image:
         return None
 
     def execute_code(self, code):
-        """Execute the code from Claude's response"""
+        """Execute the code from Claude's response and simulate the movement"""
         if not code:
             self.log_message("No executable code found in response.")
             return
@@ -355,25 +623,222 @@ Here's the current Tetris game state image:
         self.log_message("Executing code...")
         self.log_message(f"Code to execute:\n{code}")
         
+        # Create a new dictionary to store the actions that will be performed
+        actions = []
+        
+        # Extract actions from the code
+        lines = code.strip().split('\n')
+        for line in lines:
+            if 'pyautogui.press' in line:
+                # Extract key from the press command
+                import re
+                match = re.search(r'press\([\'"](.+?)[\'"]\)', line)
+                if match:
+                    key = match.group(1)
+                    actions.append(key)
+        
+        self.log_message(f"Extracted actions: {actions}")
+        
+        if not actions:
+            self.log_message("No valid actions found in code.")
+            return
+        
+        # Take a pre-execution screenshot of the initial state
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        pre_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_pre_execution_{self.iteration}.png")
+        self.simulated_board.save(pre_screenshot_path)
+        
+        # Simulate piece movement based on actions
+        if self.use_simulated_board and self.current_piece:
+            # Clone the current piece for simulation
+            piece = self.current_piece.copy()
+            
+            for action in actions:
+                # Apply action to the piece
+                if action == 'left':
+                    piece['x'] -= 1
+                    # Check if valid (not outside board or colliding)
+                    if not self.is_valid_position(piece):
+                        piece['x'] += 1  # Undo if invalid
+                
+                elif action == 'right':
+                    piece['x'] += 1
+                    # Check if valid
+                    if not self.is_valid_position(piece):
+                        piece['x'] -= 1  # Undo if invalid
+                
+                elif action == 'up' or action == 'rotate':
+                    # Rotate piece (clockwise)
+                    piece_type = piece['type']
+                    max_rotation = len(self.piece_shapes[piece_type])
+                    piece['rotation'] = (piece['rotation'] + 1) % max_rotation
+                    # Check if valid
+                    if not self.is_valid_position(piece):
+                        # Try kick (wall kick) - move left or right if rotation causes collision
+                        # First try moving right
+                        piece['x'] += 1
+                        if not self.is_valid_position(piece):
+                            # If right doesn't work, try left
+                            piece['x'] -= 2
+                            if not self.is_valid_position(piece):
+                                # If left doesn't work either, undo rotation
+                                piece['x'] += 1  # Reset to original x
+                                piece['rotation'] = (piece['rotation'] - 1) % max_rotation
+                
+                elif action == 'down':
+                    piece['y'] += 1
+                    # Check if valid
+                    if not self.is_valid_position(piece):
+                        piece['y'] -= 1  # Undo if invalid
+                
+                elif action == 'space':
+                    # Hard drop - move down until collision
+                    while self.is_valid_position(piece):
+                        piece['y'] += 1
+                    # Move back up one step after finding invalid position
+                    piece['y'] -= 1
+                    
+                    # Lock the piece in place
+                    self.lock_piece(piece)
+                    
+                    # Use next piece as current piece
+                    import random
+                    piece_types = ['I', 'J', 'L', 'O', 'S', 'T', 'Z']
+                    self.current_piece = {
+                        'type': self.next_piece['type'],
+                        'x': 4,
+                        'y': 0,
+                        'rotation': 0
+                    }
+                    self.next_piece = {'type': random.choice(piece_types)}
+                    
+                    # Update piece for further actions
+                    piece = self.current_piece.copy()
+                    
+                    # Check and clear lines
+                    self.clear_lines()
+            
+            # Update current piece with the final position
+            self.current_piece = piece
+        
+        # Create updated board after movement
+        self.create_simulated_tetris_board()
+        
+        # Take a post-execution screenshot of the updated state
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        post_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_post_execution_{self.iteration}.png")
+        self.simulated_board.save(post_screenshot_path)
+        self.log_message(f"Post-execution screenshot saved to: {post_screenshot_path}")
+        
+        # Also execute the code using PyAutoGUI for real-game scenarios
         try:
             # Add necessary imports
             if "import pyautogui" not in code:
                 code = "import pyautogui\nimport time\n" + code
             
-            # Execute the code
-            exec(code, {"pyautogui": pyautogui, "time": time})
-            self.log_message("Code execution completed.")
+            # Execute the code (only for real game mode)
+            if not self.use_simulated_board:
+                exec(code, {"pyautogui": pyautogui, "time": time})
             
-            # Take a post-execution screenshot
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            post_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_post_execution_{self.iteration}.png")
-            post_screenshot = pyautogui.screenshot(region=self.find_tetris_window())
-            post_screenshot.save(post_screenshot_path)
-            self.log_message(f"Post-execution screenshot saved to: {post_screenshot_path}")
+            self.log_message("Code execution completed.")
             
         except Exception as e:
             self.log_message(f"Error executing code: {str(e)}")
             traceback.print_exc()
+    
+    def is_valid_position(self, piece):
+        """Check if the piece position is valid (not outside board or colliding)"""
+        if not piece:
+            return False
+            
+        piece_type = piece['type']
+        x_offset = piece['x']
+        y_offset = piece['y']
+        rotation = piece['rotation'] % len(self.piece_shapes[piece_type])
+        
+        for x, y in self.piece_shapes[piece_type][rotation]:
+            # Check if piece is within board boundaries
+            board_x = x_offset + x
+            board_y = y_offset + y
+            
+            # Outside board boundaries
+            if (board_x < 0 or board_x >= 10 or 
+                board_y < 0 or board_y >= 20):
+                return False
+                
+            # Collision with existing blocks
+            if board_y >= 0 and self.board_state[board_y][board_x] > 0:
+                return False
+                
+        return True
+    
+    def lock_piece(self, piece):
+        """Lock the piece in place on the board"""
+        if not piece:
+            return
+            
+        piece_type = piece['type']
+        x_offset = piece['x']
+        y_offset = piece['y']
+        rotation = piece['rotation'] % len(self.piece_shapes[piece_type])
+        color_index = self.piece_colors[piece_type]
+        
+        for x, y in self.piece_shapes[piece_type][rotation]:
+            board_x = x_offset + x
+            board_y = y_offset + y
+            
+            # Only place if within board
+            if 0 <= board_x < 10 and 0 <= board_y < 20:
+                self.board_state[board_y][board_x] = color_index
+    
+    def clear_lines(self):
+        """Clear completed lines and shift the board down"""
+        lines_to_clear = []
+        
+        # Find completed lines
+        for y in range(20):
+            if all(cell > 0 for cell in self.board_state[y]):
+                lines_to_clear.append(y)
+        
+        # Clear lines from bottom to top
+        for y in sorted(lines_to_clear, reverse=True):
+            # Remove the completed line
+            self.board_state.pop(y)
+            # Add a new empty line at the top
+            self.board_state.insert(0, [0 for _ in range(10)])
+            
+        return len(lines_to_clear)
+
+    def create_simple_tetris_board(self, piece_type='T'):
+        """
+        创建一个简单的Tetris棋盘，只有一个当前方块在顶部
+        
+        Args:
+            piece_type: 方块类型 ('I', 'J', 'L', 'O', 'S', 'T', 'Z')
+            
+        Returns:
+            PIL.Image: 简单的Tetris棋盘图像
+        """
+        # 创建空棋盘 (没有任何已放置的方块)
+        self.board_state = [[0 for _ in range(10)] for _ in range(20)]
+        
+        # 当前方块在顶部中间
+        self.current_piece = {
+            'type': piece_type,
+            'x': 4,
+            'y': 0,
+            'rotation': 0
+        }
+        
+        # 下一个方块是I型
+        self.next_piece = {'type': 'I'}
+        
+        # 创建并返回模拟棋盘
+        return self.create_simulated_tetris_board(
+            board_state=self.board_state,
+            current_piece=self.current_piece,
+            next_piece=self.next_piece
+        )
 
     def run(self):
         """Main loop"""
@@ -444,6 +909,14 @@ def main():
     parser.add_argument("--window-title", type=str, default=TETRIS_WINDOW_TITLE, 
                         help=f"Window title to look for (default: '{TETRIS_WINDOW_TITLE}')")
     
+    # Simulation mode options
+    parser.add_argument("--no-simulate", action="store_true", help="Don't use simulated board (capture real screenshots)")
+    parser.add_argument("--complex", action="store_true", help="Use complex board with multiple pieces (not simple)")
+    parser.add_argument("--piece", type=str, default='T', choices=['I', 'J', 'L', 'O', 'S', 'T', 'Z'], 
+                        help="Piece type for simple simulation (default: T)")
+    parser.add_argument("--fill", type=int, default=30, help="Fill percentage for complex board (default: 30)")
+    parser.add_argument("--height", type=int, default=15, help="Maximum height for complex board (default: 15)")
+    
     args = parser.parse_args()
     
     # Create and run the iterator with custom settings
@@ -459,6 +932,31 @@ def main():
             print(f"Error parsing window position: {e}")
             print("Format should be: x,y,width,height (e.g., 0,0,500,600)")
             return
+    
+    # Enable simulation mode based on command-line options
+    if args.no_simulate:
+        print("Using real screenshots instead of simulated board")
+        iterator.use_simulated_board = False
+    else:
+        # Default is to use simple simulated board
+        if args.complex:
+            print("Using complex simulated Tetris board with multiple pieces")
+            # Generate random board state
+            board, current_piece, next_piece = iterator.simulate_random_board_state(
+                fill_percentage=args.fill,
+                max_height=args.height
+            )
+            
+            # Create simulated board
+            iterator.create_simulated_tetris_board(
+                board_state=board,
+                current_piece=current_piece,
+                next_piece=next_piece
+            )
+        else:
+            print(f"Using simple simulated Tetris board with a single {args.piece} piece")
+            # Create simple board with just one piece
+            iterator.create_simple_tetris_board(piece_type=args.piece)
     
     # Run the iterator
     iterator.run()
