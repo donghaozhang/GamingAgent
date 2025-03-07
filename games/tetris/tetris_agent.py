@@ -268,28 +268,39 @@ def stop_tetris_game():
             print(f"Error accessing process: {e}")
 
 # 键盘监听函数，使用keyboard库接收"q"键
-def key_listener():
+def key_listener(event_flag=None):
     """
     启动一个键盘监听线程，监听'q'键来停止所有线程
-    """
-    global stop_flag
     
+    Args:
+        event_flag: 停止标志，通常是threading.Event对象
+    """
     if not KEYBOARD_AVAILABLE:
         print("Keyboard library not available. Press Ctrl+C to stop.")
         return
-        
+    
+    # 获取全局变量的引用
+    global stop_flag
+    
     def on_q_pressed(e):
         """当按下q键时停止所有线程"""
-        global stop_flag
         if e.name == 'q':
             print("'q' key pressed, stopping all threads...")
+            
+            # 设置传入的Event对象（如果有）
+            if event_flag is not None and isinstance(event_flag, threading.Event):
+                event_flag.set()
+            
+            # 同时设置全局stop_flag变量
+            global stop_flag
             stop_flag = True
+            
             # 停止游戏进程
             stop_tetris_game()
             # 停止监听器
             return False
     
-    # 设置监听函数
+    # 创建并启动监听器
     keyboard.on_press(on_q_pressed)
     print("Starting keyboard listener. Press 'q' to stop all threads.")
 
@@ -333,196 +344,195 @@ system_prompt = (
 )
 
 def main():
-    """主函数"""
-    global stop_flag, tetris_process
-    
-    # 注册信号处理程序，以便可以用Ctrl+C停止
-    signal.signal(signal.SIGINT, signal_handler)
-    
-    # 设置参数解析
-    parser = argparse.ArgumentParser(description='AI agent for playing Tetris')
-    parser.add_argument('--model_name', default='claude-3-7-sonnet-20250219', help='AI model name to use (default: claude-3-7-sonnet-20250219)')
-    parser.add_argument('--api_provider', default='anthropic', choices=['anthropic', 'openai', 'gemini'], help='API provider to use')
-    parser.add_argument('--min_threads', default=1, type=int, help='Minimum number of threads to use')
-    parser.add_argument('--max_threads', default=1, type=int, help='Maximum number of threads to use')
-    parser.add_argument('--plan_seconds', default=60, type=int, help='Seconds between planning cycles (default: 60)')
-    parser.add_argument('--execution_mode', default='adaptive', choices=['adaptive', 'fast', 'slow'], 
-                        help='Control how fast commands are executed: adaptive (adjust to game), fast (quick execution), slow (more deliberate)')
-    parser.add_argument('--piece_limit', default=0, type=int, 
-                        help='Maximum number of pieces to control per API call (0 for unlimited)')
-    parser.add_argument('--thread_policy', default='fixed', choices=['fixed', 'dynamic'], help='Thread management policy')
-    parser.add_argument('--verbose_output', action='store_true', help='Display verbose output')
-    parser.add_argument('--save_responses', action='store_true', help='Save AI responses to files')
-    parser.add_argument('--output_dir', default='game_logs', help='Directory to save responses and screenshots')
-    parser.add_argument('--manual_window', action='store_true', help='Manually specify window region')
-    parser.add_argument('--window_left', type=int, help='Left coordinate of window')
-    parser.add_argument('--window_top', type=int, help='Top coordinate of window')
-    parser.add_argument('--window_width', type=int, help='Width of window')
-    parser.add_argument('--window_height', type=int, help='Height of window')
-    parser.add_argument('--debug_pause', action='store_true', help='Pause for debugging between actions')
+    """主函数，解析命令行参数并启动代理"""
+    parser = argparse.ArgumentParser(description='Tetris AI Agent')
+    parser.add_argument('--threads', type=int, default=1, help='Number of threads to run')
+    parser.add_argument('--offset', type=float, default=0, help='Delay offset (seconds) between threads')
+    parser.add_argument('--policy', type=str, default='fixed', choices=['fixed', 'cyclic'], help='Thread spawn policy')
+    parser.add_argument('--system_prompt', type=str, default='You are a helpful expert Tetris player. Your task is to help the user play Tetris by providing the best moves for the current board state.', help='System prompt for the model')
+    parser.add_argument('--execution_mode', type=str, default='adaptive', choices=['adaptive', 'fast', 'slow'], help='Execution mode for model code')
+    parser.add_argument('--piece_limit', type=int, default=0, help='Maximum pieces to control per API call (0=unlimited)')
+    parser.add_argument('--api_provider', type=str, default='anthropic', choices=['anthropic', 'claude', 'openai', 'gpt4'], help='API provider')
+    parser.add_argument('--model', type=str, default='claude-3-7-sonnet-20250219', help='Model name')
+    parser.add_argument('--plan_seconds', type=float, default=60, help='Planning horizon (seconds)')
+    parser.add_argument('--manual_mode', action='store_true', help='Manual mode - wait for space key between API calls')
+    parser.add_argument('--save_responses', action='store_true', help='Save model responses to files')
+    parser.add_argument('--verbose', action='store_true', help='Verbose output')
+    parser.add_argument('--debug_pause', action='store_true', help='Pause before executing code')
+    parser.add_argument('--output_dir', type=str, default='game_logs', help='Output directory for logs')
+    parser.add_argument('--log_folder', type=str, default=None, help='Custom log folder')
+    parser.add_argument('--manual_window_pos', type=str, default=None, help='Manual window position (x,y,width,height)')
     parser.add_argument('--no_launch_game', action='store_true', help='Do not launch the Tetris game')
-    parser.add_argument('--use_original_tetris', action='store_true', help='Use original Tetris instead of simplified version')
-    parser.add_argument('--window_region', help='Window region in the format "left,top,width,height"')
-    parser.add_argument('--screenshot_interval', default=0, type=int, help='Take additional screenshots every N seconds (0 to disable)')
-    parser.add_argument('--enhanced_logging', action='store_true', help='Enable enhanced logging with timestamps')
-    parser.add_argument('--save_all_states', action='store_true', help='Save screenshots for all game states')
-    parser.add_argument('--log_folder', default='game_logs', help='Folder for storing logs and additional screenshots')
-
-    args = parser.parse_args()
-
-    # 打印参数信息
-    print(f"Starting with {args.min_threads} threads using policy '{args.thread_policy}'...")
-    print(f"API Provider: {args.api_provider}, Model Name: {args.model_name}")
-    print(f"Verbose output: {args.verbose_output}, Save responses: {args.save_responses}")
-    print(f"Debug pause: {args.debug_pause}")
+    parser.add_argument('--simplified', action='store_true', help='Use simplified Tetris game')
+    parser.add_argument('--screenshot_interval', type=float, default=0, help='Screenshot interval (seconds), 0 to disable')
+    parser.add_argument('--save_all_states', action='store_true', help='Save all game states')
+    parser.add_argument('--enhanced_logging', action='store_true', help='Enable enhanced logging')
     
-    # 检查conda环境
-    conda_env, conda_prefix = get_conda_env_info()
-    if conda_env and conda_prefix:
-        print(f"Running in conda environment: {conda_env} ({conda_prefix})")
+    args = parser.parse_args()
+    
+    # 检查是否安装了PyAutoGUI
+    try:
+        import pyautogui
+    except ImportError:
+        print("Error: PyAutoGUI is not installed. Please install it using: pip install pyautogui")
+        return
+
+    # 打印环境信息
+    conda_env = get_conda_env_info()
+    if conda_env:
+        print(f"Running in conda environment: {conda_env}")
     
     # 创建日志文件夹
-    if args.enhanced_logging or args.save_all_states or args.screenshot_interval > 0:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_folder = os.path.join(args.log_folder, f"session_{timestamp}")
-        os.makedirs(log_folder, exist_ok=True)
-        
-        # 创建日志文件
-        log_file = os.path.join(log_folder, "game_log.txt")
-        with open(log_file, 'w') as f:
-            f.write(f"=== Tetris Agent Session Started at {timestamp} ===\n")
-            f.write(f"Arguments: {json.dumps(vars(args), indent=2)}\n")
-            f.write(f"System info: {platform.system()} {platform.release()}\n")
+    if args.log_folder is None:
+        args.log_folder = os.path.join(args.output_dir, f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    
+    os.makedirs(args.log_folder, exist_ok=True)
+    
+    # 创建主日志文件
+    log_file = os.path.join(args.log_folder, "game_log.txt")
+    
+    # 如果启用了增强日志，记录启动信息
+    if args.enhanced_logging:
+        with open(log_file, 'w', encoding='utf-8') as f:
+            f.write(f"=== Tetris AI Agent Started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+            f.write(f"Threads: {args.threads}, Policy: {args.policy}\n")
+            f.write(f"API Provider: {args.api_provider}, Model: {args.model}\n")
+            f.write(f"Plan Seconds: {args.plan_seconds}\n")
+            f.write(f"Manual Mode: {args.manual_mode}\n")
+            f.write(f"Screenshot Interval: {args.screenshot_interval}\n")
+            f.write(f"Enhanced Logging: {args.enhanced_logging}\n")
             f.write("="*50 + "\n\n")
         
         print(f"Enhanced logging enabled. Logs will be saved to {log_file}")
-    else:
-        log_folder = None
-        log_file = None
     
-    # 设置手动窗口区域
+    # 解析手动窗口位置（如果提供）
     manual_window_region = None
-    if args.manual_window and args.window_left is not None and args.window_top is not None and args.window_width is not None and args.window_height is not None:
-        manual_window_region = (args.window_left, args.window_top, args.window_width, args.window_height)
-        print(f"Using manual window region: {manual_window_region}")
+    if args.manual_window_pos:
+        try:
+            parts = [int(x) for x in args.manual_window_pos.split(',')]
+            if len(parts) == 4:
+                manual_window_region = tuple(parts)
+                print(f"Using manual window region: {manual_window_region}")
+            else:
+                print(f"Invalid manual window position format. Expected: x,y,width,height")
+        except ValueError:
+            print(f"Invalid manual window position format. Expected: x,y,width,height")
     
-    # 如果需要，启动Tetris游戏监控线程
-    monitor_thread = None
+    # 如果没有使用--no_launch_game参数，启动Tetris游戏
     if not args.no_launch_game:
-        monitor_thread = threading.Thread(
-            target=tetris_monitor_thread,
-            args=(not args.use_original_tetris,),
-            daemon=True
+        game_process = launch_tetris_game(use_simplified=args.simplified)
+        if not game_process:
+            print("Failed to start Tetris game. Exiting...")
+            return
+        
+        # 给游戏一些时间启动
+        print("Waiting for game to start...")
+        time.sleep(3)
+    
+    # 设置停止标志
+    stop_flag = threading.Event()
+    
+    # 创建并启动键盘监听器 - 修复：传递Event对象
+    keyboard_thread = threading.Thread(target=key_listener, args=(stop_flag,))
+    keyboard_thread.daemon = True
+    keyboard_thread.start()
+    print("Starting keyboard listener. Press 'q' to stop all threads.")
+    
+    # 启动线程
+    print(f"Starting with {args.threads} threads using policy '{args.policy}'...")
+    
+    # 创建共享的响应字典
+    responses_dict = {}
+    
+    # 启动工作线程
+    threads = []
+    for i in range(args.threads):
+        # 计算偏移
+        if args.policy == 'fixed':
+            offset = args.offset
+        else:  # 'cyclic'
+            offset = i * (args.plan_seconds / args.threads)
+        
+        thread = threading.Thread(
+            target=worker_tetris,
+            args=(
+                i,
+                offset,
+                args.system_prompt,
+                args.api_provider,
+                args.model,
+                args.plan_seconds,
+                args.verbose,
+                args.save_responses,
+                args.output_dir,
+                responses_dict,
+                manual_window_region,
+                args.debug_pause,
+                stop_flag,
+                args.log_folder,
+                log_file,
+                args.screenshot_interval,
+                args.save_all_states,
+                args.enhanced_logging,
+                args.execution_mode,
+                args.piece_limit,
+                args.manual_mode  # 添加manual_mode参数
+            )
         )
-        monitor_thread.start()
+        thread.daemon = True
+        thread.start()
+        threads.append(thread)
     
-    # 启动键盘监听线程
-    key_listener()
-    
-    # 创建、启动线程池和线程
+    # 等待所有线程完成
     try:
-        # 创建保存响应的目录
-        if args.save_responses:
-            os.makedirs(args.output_dir, exist_ok=True)
+        # 循环检查所有线程是否完成
+        while any(t.is_alive() for t in threads):
+            time.sleep(0.5)
             
-        # 创建用于在线程间共享响应的字典
-        responses_dict = {}
-        
-        # 启动工作线程
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.max_threads) as executor:
-            # 创建worker线程
-            futures = []
-            for i in range(args.min_threads):
-                future = executor.submit(
-                    worker_tetris,
-                    i,
-                    i % 10 * 100,  # 偏移量
-                    "You are a helpful assistant that plays Tetris. When asked to help the player, you should analyze the visible game state from the image, identify the current and next piece, and suggest the best move considering piece placement, line clearing, and maintaining a good board structure. Explain your reasoning based on Tetris strategy principles. You need to plan for multiple pieces, not just the current one. Make sure to include detailed timing with pyautogui.sleep() commands between actions to ensure the game has time to respond.",
-                    args.api_provider,
-                    args.model_name,
-                    args.plan_seconds,
-                    args.verbose_output,
-                    args.save_responses,
-                    args.output_dir,
-                    responses_dict,
-                    manual_window_region,
-                    args.debug_pause,
-                    lambda: stop_flag,  # 使用lambda获取最新的stop_flag值
-                    # 添加新的参数
-                    log_folder=log_folder,
-                    log_file=log_file,
-                    screenshot_interval=args.screenshot_interval,
-                    save_all_states=args.save_all_states,
-                    enhanced_logging=args.enhanced_logging,
-                    execution_mode=args.execution_mode,
-                    piece_limit=args.piece_limit
-                )
-                futures.append(future)
-            
-            # 使用wait_for_any_result函数等待结果
-            while futures and not stop_flag:
-                done, futures = wait_for_any_result(futures)
-                for future in done:
-                    try:
-                        result = future.result()
-                        print(f"Thread completed with result: {result}")
-                    except Exception as e:
-                        print(f"Thread raised an exception: {e}")
+            # 如果停止标志被设置，尝试优雅地停止线程
+            if stop_flag.is_set():
+                print("\nStop flag detected, waiting for threads to complete...")
                 
-                # 如果使用动态线程策略且尚未达到最大线程数，可以添加更多线程
-                if args.thread_policy == 'dynamic' and len(futures) < args.max_threads and not stop_flag:
-                    new_thread_id = len(futures) + args.min_threads
-                    future = executor.submit(
-                        worker_tetris,
-                        new_thread_id,
-                        new_thread_id % 10 * 100,  # 偏移量
-                        "You are a helpful assistant that plays Tetris. When asked to help the player, you should analyze the visible game state from the image, identify the current and next piece, and suggest the best move considering piece placement, line clearing, and maintaining a good board structure. Explain your reasoning based on Tetris strategy principles. You need to plan for multiple pieces, not just the current one. Make sure to include detailed timing with pyautogui.sleep() commands between actions to ensure the game has time to respond.",
-                        args.api_provider,
-                        args.model_name,
-                        args.plan_seconds,
-                        args.verbose_output,
-                        args.save_responses,
-                        args.output_dir,
-                        responses_dict,
-                        manual_window_region,
-                        args.debug_pause,
-                        lambda: stop_flag,  # 使用lambda获取最新的stop_flag值
-                        # 添加新的参数
-                        log_folder=log_folder,
-                        log_file=log_file,
-                        screenshot_interval=args.screenshot_interval,
-                        save_all_states=args.save_all_states,
-                        enhanced_logging=args.enhanced_logging,
-                        execution_mode=args.execution_mode,
-                        piece_limit=args.piece_limit
-                    )
-                    futures.append(future)
-            
-            # 如果是因为stop_flag被设置而退出循环，取消所有未完成的任务
-            if stop_flag:
-                for future in futures:
-                    future.cancel()
+                # 给线程一些时间优雅地关闭
+                for _ in range(10):  # 最多等待5秒
+                    if not any(t.is_alive() for t in threads):
+                        break
+                    time.sleep(0.5)
+                
+                # 如果线程仍在运行，尝试强制终止
+                if any(t.is_alive() for t in threads):
+                    print("Some threads are still running. They will be terminated when the main thread exits.")
+                
+                # 确保游戏进程被停止
+                if not args.no_launch_game:
+                    stop_tetris_game()
+                
+                break
         
-            # 等待monitor_thread退出
-            if monitor_thread and monitor_thread.is_alive():
-                print("Waiting for monitor thread to exit...")
-                monitor_thread.join(timeout=5)
+        # 如果没有停止标志但所有线程都结束，优雅地退出
+        if not stop_flag.is_set() and not any(t.is_alive() for t in threads):
+            print("\nAll threads completed.")
+            
+            # 确保所有监视线程都结束
+            for monitor_thread in [keyboard_thread]:
+                if monitor_thread.is_alive():
+                    stop_flag.set()
+                    monitor_thread.join(timeout=5)
     
     except KeyboardInterrupt:
-            print("\nInterrupted by user, stopping all threads...")
-            stop_flag = True
-            # 确保游戏进程被停止
-            stop_tetris_game()
-    
-    except Exception as e:
-        print(f"Error in main: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    finally:
-        # 确保游戏被停止
+        print("\nInterrupted by user, stopping all threads...")
+        stop_flag.set()
+        # 确保游戏进程被停止
         stop_tetris_game()
-        print("Main thread exiting...")
+    
+    # 如果不是自动启动的游戏，提示用户
+    if args.no_launch_game:
+        print("Using --no_launch_game, not searching for other Tetris processes")
+    else:
+        # 停止Tetris游戏
+        stop_tetris_game()
+    
+    print("Main thread exiting...")
 
 if __name__ == "__main__":
     main()

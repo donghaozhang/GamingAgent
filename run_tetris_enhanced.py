@@ -20,6 +20,7 @@ import time
 import re
 from pathlib import Path
 from datetime import datetime
+import argparse
 
 
 def parse_custom_args(args):
@@ -64,6 +65,8 @@ def parse_custom_args(args):
             match = re.match(r"--piece-limit=(\d+)", arg)
             if match:
                 piece_limit = int(match.group(1))
+            to_remove.append(arg)
+        elif arg == "--manual_mode":
             to_remove.append(arg)
     
     # 移除我们处理的参数
@@ -114,12 +117,22 @@ def main():
     print("-" * 60)
     
     # 解析参数
-    args = sys.argv[1:]
-    direct_game = "--direct-game" in args
-    only_agent = "--only-agent" in args
+    parser = argparse.ArgumentParser(description="Tetris AI Agent Enhanced Launcher")
+    parser.add_argument('--screenshot_interval', type=float, default=5, help='Screenshot interval in seconds')
+    parser.add_argument('--enhanced_logging', action='store_true', help='Enable enhanced logging')
+    parser.add_argument('--save_all_states', action='store_true', help='Save screenshots of all game states')
+    parser.add_argument('--plan_seconds', type=float, default=60, help='Planning horizon in seconds')
+    parser.add_argument('--execution_mode', type=str, default='adaptive', choices=['adaptive', 'fast', 'slow'], help='Execution mode')
+    parser.add_argument('--piece_limit', type=int, default=0, help='Limit pieces per API call (0=unlimited)')
+    parser.add_argument('--manual_mode', action='store_true', help='Manual mode - press space to continue after each API call')
+    parser.add_argument('--api_provider', type=str, default='anthropic', choices=['anthropic', 'claude', 'openai', 'gpt4'], help='API provider')
+    
+    args = parser.parse_args()
+    direct_game = "--direct-game" in sys.argv[1:]
+    only_agent = "--only-agent" in sys.argv[1:]
     
     # 移除我们处理的参数
-    filtered_args = [arg for arg in args if arg not in ["--direct-game", "--only-agent"]]
+    filtered_args = [arg for arg in sys.argv[1:] if arg not in ["--direct-game", "--only-agent"]]
     
     # 处理自定义参数
     filtered_args = parse_custom_args(filtered_args)
@@ -167,20 +180,40 @@ def main():
     
     # 2. 然后启动代理
     try:
-        # 构建命令参数
-        cmd = [sys.executable, str(tetris_agent_path)] + filtered_args
+        # 构建增强版代理命令
+        log_folder = f"game_logs/session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # 如果我们已经启动了游戏，告诉代理不要再次启动游戏
-        if game_process is not None and game_process.poll() is None:
-            if "--no_launch_game" not in cmd:
-                cmd.append("--no_launch_game")
-                print("添加--no_launch_game参数，防止代理再次启动游戏")
+        # 创建命令数组，而不是字符串
+        agent_cmd = [
+            sys.executable,
+            str(tetris_agent_path),
+            f"--screenshot_interval={args.screenshot_interval}",
+            f"--plan_seconds={args.plan_seconds}",
+            f"--execution_mode={args.execution_mode}",
+            f"--log_folder={log_folder}",
+            "--enhanced_logging",
+            "--save_all_states"
+        ]
         
-        cmd_str = " ".join(cmd)
-        print(f"运行增强版代理命令: {cmd_str}")
+        # 添加API提供商
+        agent_cmd.append(f"--api_provider={args.api_provider}")
+        
+        # 如果有piece_limit，添加到命令
+        if args.piece_limit > 0:
+            agent_cmd.append(f"--piece_limit={args.piece_limit}")
+        
+        # 如果使用手动模式，添加参数
+        if args.manual_mode:
+            agent_cmd.append("--manual_mode")
+        
+        # 如果已经启动了游戏，添加--no_launch_game参数
+        if not only_agent and game_process:
+            agent_cmd.append("--no_launch_game")
+        
+        print(f"运行增强版代理命令: {' '.join(agent_cmd)}")
         
         # 运行Tetris代理
-        process = subprocess.run(cmd, check=True)
+        process = subprocess.run(agent_cmd, check=True)
         print("\nTetris代理已成功运行并退出。")
     except subprocess.CalledProcessError as e:
         print(f"\n错误：Tetris代理运行失败，退出代码: {e.returncode}")

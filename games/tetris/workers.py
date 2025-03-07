@@ -1,14 +1,98 @@
-import time
+#!/usr/bin/env python
+"""
+Tetris workers
+这个文件包含用于控制Tetris游戏的工作线程函数
+"""
+
 import os
+import time
+import base64
+import threading
+import random
+import re
 import pyautogui
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont  # 添加绘图功能
-import threading
-from datetime import datetime
+import traceback
+from io import BytesIO, StringIO
 import json
+import sys
+from PIL import Image, ImageDraw, ImageFont
+from datetime import datetime
 
-from tools.utils import encode_image, log_output, extract_python_code
-from tools.serving.api_providers import anthropic_completion, openai_completion, gemini_completion
+try:
+    from tools.utils import encode_image, extract_python_code
+except ImportError:
+    def encode_image(image_path):
+        """
+        将图像编码为base64格式
+        
+        Args:
+            image_path: 图像路径
+            
+        Returns:
+            str: base64编码的图像
+        """
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+    
+    def extract_python_code(text):
+        """
+        从文本中提取Python代码块
+        
+        Args:
+            text: 包含代码的文本
+            
+        Returns:
+            str: 提取的Python代码
+        """
+        # 尝试查找标准的```python 代码块
+        pattern = r"```(?:python|py)?\s*([\s\S]*?)```"
+        matches = re.findall(pattern, text)
+        
+        if matches:
+            # 使用第一个匹配的代码块
+            return matches[0].strip()
+        
+        # 如果找不到标准格式的代码块，尝试查找所有import pyautogui的部分
+        if "import pyautogui" in text:
+            # 识别可能的Python代码行
+            lines = text.split('\n')
+            code_lines = []
+            in_code_block = False
+            
+            for line in lines:
+                if "import pyautogui" in line:
+                    in_code_block = True
+                    code_lines.append(line)
+                elif in_code_block:
+                    # 假设空行或不像代码的行表示代码块的结束
+                    if line.strip() == "" or not any(keyword in line for keyword in ["import", "pyautogui", "time", "sleep", "press", "#", "="]):
+                        # 但如果下一行看起来还是代码，就继续
+                        continue
+                    code_lines.append(line)
+            
+            return "\n".join(code_lines)
+        
+        # 最后的尝试：直接搜索包含pyautogui.press的行
+        pattern = r"pyautogui\.press\(['\"].*?['\"]\)"
+        if re.search(pattern, text):
+            # 如果找到pyautogui命令，提取相关行
+            lines = text.split('\n')
+            code_lines = []
+            
+            for line in lines:
+                if any(keyword in line for keyword in ["pyautogui", "time.sleep", "import "]):
+                    code_lines.append(line)
+            
+            # 添加必要的import语句
+            if code_lines and not any("import" in line for line in code_lines):
+                code_lines.insert(0, "import pyautogui")
+                code_lines.insert(1, "import time")
+            
+            return "\n".join(code_lines)
+        
+        # 如果什么都找不到，返回空字符串
+        return ""
 
 # Add this function to find Tetris window directly
 def find_tetris_window(window_title_keywords=None):
@@ -210,941 +294,594 @@ def worker_tetris(
     save_all_states=False,  # 是否保存所有状态的截图
     enhanced_logging=False,  # 是否启用增强日志
     execution_mode='adaptive',  # 控制执行模式：adaptive, fast, or slow
-    piece_limit=0  # 每次API调用最多控制的方块数量，0表示不限制
+    piece_limit=0,  # 每次API调用最多控制的方块数量，0表示不限制
+    manual_mode=True  # 新增参数：手动模式，需要用户按空格键继续
 ):
     """
-    A single Tetris worker that plans moves for 'plan_seconds'.
-    1) Sleeps 'offset' seconds before starting (to stagger starts).
-    2) Continuously:
-        - Captures a screenshot of the Tetris window
-        - Calls the LLM with a Tetris prompt that includes 'plan_seconds'
-        - Extracts the Python code from the LLM output
-        - Executes the code with `exec()`
+    Tetris游戏工作线程
     
     Args:
-        thread_id (int): Unique ID for this worker thread
-        offset (float): Initial sleep delay in seconds
-        system_prompt (str): System prompt for the LLM
-        api_provider (str): API provider to use (anthropic, openai, or gemini)
-        model_name (str): Model name to use
-        plan_seconds (float): Number of seconds to plan for
-        verbose_output (bool): Whether to print detailed model responses
-        save_responses (bool): Whether to save model responses to files
-        output_dir (str): Directory to save model responses and screenshots，默认为game_logs
-        responses_dict (dict): Shared dictionary to store responses across threads
-        manual_window_region (tuple): Manually specified window region (left, top, width, height)
-        debug_pause (bool): Whether to pause for debugging
-        stop_flag: Stop flag, can be a boolean reference or threading.Event
-        log_folder: 日志文件夹，用于保存增强的日志和截图，如果为None则使用output_dir
+        thread_id: 线程ID
+        offset: 启动延迟(秒)
+        system_prompt: 系统提示词
+        api_provider: API提供商名称
+        model_name: 模型名称
+        plan_seconds: 计划时间(秒)
+        verbose_output: 是否输出详细信息
+        save_responses: 是否保存模型响应
+        output_dir: 输出目录
+        responses_dict: 用于存储响应的字典
+        manual_window_region: 手动指定的窗口区域
+        debug_pause: 是否在执行代码前暂停等待确认
+        stop_flag: 停止标志
+        log_folder: 日志文件夹
         log_file: 日志文件路径
-        screenshot_interval: 截图间隔(秒)，0表示禁用
+        screenshot_interval: 截图间隔(秒)
         save_all_states: 是否保存所有状态的截图
         enhanced_logging: 是否启用增强日志
-        execution_mode: 控制执行模式 - adaptive (自适应), fast (快速), slow (慢速)
-        piece_limit: 每次API调用最多控制的方块数量，0表示不限制
+        execution_mode: 控制执行模式
+        piece_limit: 每次API调用最多控制的方块数量
+        manual_mode: 是否启用手动模式（等待用户按下空格键）
+        
+    Returns:
+        str: 执行状态
     """
+    import time
+    import datetime
+    import os
+    import base64
+    import random
+    import re
+    import pyautogui
+    import numpy as np
+    import threading
+    import traceback
+    from io import BytesIO
+    import json
+    import sys
+    from PIL import Image, ImageDraw, ImageFont
+    from datetime import datetime
+    
+    # 存储所有响应时间以计算平均值
     all_response_time = []
+    
+    # 如果提供了线程字典，则初始化存储
+    if responses_dict is not None and thread_id not in responses_dict:
+        responses_dict[thread_id] = []
+    
+    # 线程级别存储
     thread_responses = []
+    thread_screenshots = []
     
-    # 确保log_folder总是有一个值
-    if log_folder is None:
-        log_folder = os.path.join(output_dir, f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-        os.makedirs(log_folder, exist_ok=True)
-    
-    # 初始化线程日志文件
-    thread_log_file = None
-    if enhanced_logging and log_folder:
-        thread_log_file = os.path.join(log_folder, f"thread_{thread_id}_log.txt")
-        with open(thread_log_file, 'w') as f:
+    # 如果提供了log_folder，创建线程特定的日志目录
+    thread_log_folder = None
+    screenshot_folder = None
+    if log_folder:
+        # 创建会话时间戳文件夹
+        session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_folder = os.path.join(log_folder, f"session_{session_timestamp}")
+        os.makedirs(session_folder, exist_ok=True)
+        
+        # 线程特定目录
+        thread_log_folder = os.path.join(session_folder, f"thread_{thread_id}")
+        os.makedirs(thread_log_folder, exist_ok=True)
+        
+        # 截图目录
+        screenshot_folder = os.path.join(thread_log_folder, f"thread_{thread_id}_screenshots")
+        os.makedirs(screenshot_folder, exist_ok=True)
+        
+        # 创建线程日志文件
+        thread_log_file = os.path.join(thread_log_folder, f"thread_{thread_id}_log.txt")
+        log_file = thread_log_file
+        
+        # 创建主日志文件
+        main_log_file = os.path.join(session_folder, "game_log.txt")
+        
+        # 记录初始信息到主日志
+        with open(main_log_file, 'a', encoding='utf-8') as f:
+            f.write(f"=== Session Started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+            f.write(f"Plan seconds: {plan_seconds}\n")
+            f.write(f"API Provider: {api_provider}, Model: {model_name}\n")
+            f.write("==================================================\n\n")
+        
+        # 记录线程启动到线程日志
+        with open(log_file, 'a', encoding='utf-8') as f:
             f.write(f"=== Thread {thread_id} Started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
             f.write(f"Plan seconds: {plan_seconds}\n")
             f.write(f"API Provider: {api_provider}, Model: {model_name}\n")
-            f.write("="*50 + "\n\n")
-        
-    # 记录日志的辅助函数
+            f.write("==================================================\n\n")
+    
+    # 停止标志，用于在外部控制线程停止
+    local_stop_flag = False
+    if stop_flag is None:
+        # 如果没有提供外部停止标志，创建本地标志
+        stop_flag = False
+    
     def log_message(message, print_message=True):
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        """记录消息到日志文件和控制台"""
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         log_entry = f"[{timestamp}] [Thread {thread_id}] {message}"
         
-        if print_message:
-            print(f"[Thread {thread_id}] {message}")
-            
-        if enhanced_logging and thread_log_file:
+        # 如果启用了增强日志，记录到文件
+        if log_file and enhanced_logging:
             try:
-                # 使用UTF-8编码写入日志文件
-                try:
-                    with open(thread_log_file, 'a', encoding='utf-8', errors='replace') as f:
-                        f.write(log_entry + "\n")
-                except Exception as e:
-                    print(f"[Thread {thread_id}] 写入线程日志文件失败: {str(e)}")
+                with open(log_file, 'a', encoding='utf-8', errors='replace') as f:
+                    f.write(log_entry + "\n")
             except Exception as e:
-                print(f"[Thread {thread_id}] 日志记录失败: {str(e)}")
+                print(f"Error writing to log file: {e}")
+        
+        # 同时打印到控制台（如果需要）
+        if print_message:
+            # 添加线程前缀，方便区分不同线程的输出
+            print(f"[Thread {thread_id}] {message}")
     
-    # 创建增强版截图函数
+    # 增强版截图函数，包含更多信息
     def enhanced_screenshot(region, suffix="", description=""):
-        if not log_folder:
-            # 如果没有指定日志文件夹，使用普通的截图函数但仍然保存到game_logs
-            game_logs_dir = os.path.join("game_logs", f"screenshots_thread_{thread_id}")
-            os.makedirs(game_logs_dir, exist_ok=True)
-            screenshot_path, screenshot = safe_screenshot(region, thread_id, game_logs_dir, suffix)
-            return screenshot_path, screenshot
+        """
+        增强版截图，带有时间戳和描述
+        
+        Args:
+            region: 截图区域 (x, y, w, h)
+            suffix: 文件名后缀
+            description: 截图描述
+            
+        Returns:
+            tuple: (截图路径, 截图对象)
+        """
+        timestamp = int(time.time() * 1000)  # 毫秒级时间戳
+        formatted_time = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # 格式化时间，精确到毫秒
+        
+        # 确保截图目录存在
+        if not screenshot_folder:
+            # 使用默认输出目录创建截图目录
+            os.makedirs(output_dir, exist_ok=True)
+            full_path = os.path.join(output_dir, f"screenshot_{thread_id}_{timestamp}{suffix}.png")
+        else:
+            # 使用线程特定的截图目录
+            os.makedirs(screenshot_folder, exist_ok=True)
+            full_path = os.path.join(screenshot_folder, f"{formatted_time}{suffix}.png")
         
         try:
-            left, top, width, height = region
+            # 截取屏幕
+            screenshot = pyautogui.screenshot(region=region)
             
-            # 确保坐标是有效的正数
-            screen_width, screen_height = pyautogui.size()
-            left = max(0, min(left, screen_width - 100))
-            top = max(0, min(top, screen_height - 100))
-            width = min(width, screen_width - left)
-            height = min(height, screen_height - top)
+            # 添加时间戳和描述
+            draw = ImageDraw.Draw(screenshot)
             
-            # 确保宽度和高度至少为10像素
-            width = max(10, width)
-            height = max(10, height)
-            
-            log_message(f"Taking screenshot of region: ({left}, {top}, {width}, {height})", print_message=False)
-            
-            # 使用pyautogui截图
-            screenshot = pyautogui.screenshot(region=(left, top, width, height))
-            
-            # 创建时间戳
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-            
-            # 仅保存到日志文件夹
-            screenshot_folder = os.path.join(log_folder, f"thread_{thread_id}_screenshots")
-            os.makedirs(screenshot_folder, exist_ok=True)
-            screenshot_path = os.path.join(screenshot_folder, f"{timestamp}_{suffix}.png")
-            
-            # 添加信息到截图
-            enhanced_img = screenshot.copy()
-            draw = ImageDraw.Draw(enhanced_img)
-            draw.rectangle([(0, 0), (enhanced_img.width-1, enhanced_img.height-1)], outline="blue", width=2)
+            # 使用简单的字体
             try:
-                draw.text((10, 10), f"Thread {thread_id} - {timestamp} - {description}", fill="blue")
-            except Exception as e:
-                log_message(f"Could not add text to screenshot: {e}", print_message=False)
+                font = ImageFont.truetype("arial.ttf", 14)
+            except:
+                # 如果找不到字体，使用默认字体
+                font = ImageFont.load_default()
             
-            enhanced_img.save(screenshot_path)
+            # 添加时间戳和描述
+            timestamp_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            draw.text((10, 10), f"{timestamp_text}", fill="white", font=font)
             
-            # 检查图像是否全黑或全白
-            img_array = np.array(screenshot)
-            is_black = np.mean(img_array) < 10
-            is_white = np.mean(img_array) > 245
+            if description:
+                draw.text((10, 30), description, fill="white", font=font)
             
-            if is_black:
-                log_message("Warning: Screenshot appears to be completely black", print_message=False)
-            elif is_white:
-                log_message("Warning: Screenshot appears to be completely white", print_message=False)
-                
-            return screenshot_path, screenshot
+            # 保存截图
+            screenshot.save(full_path)
+            thread_screenshots.append(full_path)
+            
+            return full_path, screenshot
         except Exception as e:
-            log_message(f"Error taking screenshot: {e}")
-            # 返回一个空白图像
-            blank_img = Image.new('RGB', (400, 600), color=(255, 255, 255))
-            blank_path = os.path.join(log_folder, f"thread_{thread_id}_screenshots", f"blank_screenshot_{int(time.time())}{suffix}.png")
-            os.makedirs(os.path.dirname(blank_path), exist_ok=True)
-            blank_img.save(blank_path)
-            return blank_path, blank_img
+            log_message(f"Error taking enhanced screenshot: {e}")
+            return None, None
     
-    # 初始化检查停止标志的函数
+    # 检查是否应该停止
     def should_stop():
         """检查是否应该停止线程"""
-        if stop_flag is None:
-            return False
-        elif callable(stop_flag):
-            return stop_flag()
-        elif isinstance(stop_flag, threading.Event):
-            return stop_flag.is_set()
-        else:
-            return bool(stop_flag)
+        if isinstance(stop_flag, bool):
+            return stop_flag or local_stop_flag
+        elif hasattr(stop_flag, 'is_set'):  # threading.Event
+            return stop_flag.is_set() or local_stop_flag
+        return local_stop_flag  # 默认使用局部标志
     
-    # 新增函数：检测游戏窗口并确定截图区域
+    # 函数：检测游戏窗口
     def detect_game_window():
         """
-        检测游戏窗口并确定截图区域
+        检测游戏窗口并返回区域
         
         Returns:
-            tuple: (region, region_type)
-                region: 截图区域 (left, top, width, height)
-                region_type: 区域类型 ('manual_region', 'tetris_window', 'default_region')
+            tuple: (窗口区域, 区域类型)
         """
-        # 确定窗口区域 - 优先使用手动指定的区域
+        # 如果提供了手动区域，直接使用
         if manual_window_region:
-            # 使用手动指定的窗口区域
-            region = manual_window_region
-            log_message(f"Using manually specified window region: {region}")
-            region_type = "manual_region"
-            return region, region_type
+            return manual_window_region, "manual"
         
-        # 尝试自动检测窗口
+        # 查找Tetris窗口
         tetris_region = find_tetris_window()
-        
         if tetris_region:
-            # Use the detected Tetris window region
-            region = tetris_region
-            log_message(f"Capturing Tetris window at region: {region}")
-            region_type = "tetris_window"
-            return region, region_type
-        else:
-            # 找不到窗口时，使用默认区域
-            nonlocal window_missing_count
-            window_missing_count += 1
-            log_message(f"No Tetris window found ({window_missing_count}/3 attempts). Using default region.")
-            
-            # 如果连续3次找不到窗口，则暂停一段时间
-            if window_missing_count >= 3:
-                log_message(f"WARNING: Failed to find Tetris window for 3 consecutive attempts.")
-                log_message(f"Pausing for 10 seconds to allow Tetris game to start or become visible...")
-                for i in range(10):
-                    if should_stop():
-                        break
-                    time.sleep(1)
-                    log_message(f"Waiting... {i+1}/10 seconds")
-                window_missing_count = 0  # 重置计数
-            
-            # Fallback to the default method
-            screen_width, screen_height = pyautogui.size()
-            region = (100, 100, 400, 600)  # 使用一个更可靠的默认值
-            log_message(f"Using default region: {region}, Screen size: {screen_width}x{screen_height}")
-            region_type = "default_region"
-            return region, region_type
-            
-    # 新增函数：截取游戏画面
+            log_message(f"Capturing Tetris window at region: {tetris_region}")
+            return tetris_region, "tetris"
+        
+        # 如果没有找到窗口，使用默认区域
+        log_message("Warning: Tetris window not found, using default region.")
+        default_region = (0, 0, 800, 600)
+        return default_region, "default"
+    
+    # 函数：捕获游戏画面并编码为base64
     def capture_game_screen(region):
         """
-        截取游戏画面
+        捕获游戏画面并编码为base64
         
         Args:
-            region: 截图区域 (left, top, width, height)
-            
-        Returns:
-            tuple: (screenshot_path, screenshot, base64_image)
-                screenshot_path: 截图保存路径
-                screenshot: 截图对象
-                base64_image: Base64编码的图像
-        """
-        try:
-            if enhanced_logging or save_all_states:
-                initial_screenshot_path, initial_screenshot = enhanced_screenshot(
-                    region, 
-                    suffix="_start",
-                    description="Initial State"
-                )
-                log_message(f"Initial screenshot saved to: {initial_screenshot_path}")
-            else:
-                initial_screenshot_path, initial_screenshot = safe_screenshot(
-                    region, 
-                    thread_id=thread_id, 
-                    output_dir=output_dir
-                )
-                log_message(f"Initial screenshot saved to: {initial_screenshot_path}")
-            
-            # 添加红色边框和线程ID标记，便于调试
-            draw = ImageDraw.Draw(initial_screenshot)
-            draw.rectangle([(0, 0), (initial_screenshot.width-1, initial_screenshot.height-1)], outline="red", width=3)
-            # 添加文本（如果可能）
-            try:
-                # 添加文本(在有PIL.ImageFont的环境中)
-                draw.text((10, 10), f"Thread {thread_id}", fill="red")
-            except Exception as e:
-                log_message(f"Could not add text to screenshot: {e}")
-            
-            # 保存带标记的截图
-            initial_screenshot.save(initial_screenshot_path)
-            
-            # 获取截图的Base64编码
-            base64_image = encode_image(initial_screenshot_path)
-            log_message(f"Screenshot encoded, preparing to call API...")
-            
-            return initial_screenshot_path, initial_screenshot, base64_image
-        except Exception as e:
-            log_message(f"Error processing screenshot: {e}")
-            raise  # 重新抛出异常，让调用者处理
-            
-    # 新增函数：调用AI模型API
-    def call_model_api(base64_image):
-        """
-        调用AI模型API获取响应
-        
-        Args:
-            base64_image: Base64编码的图像
-            
-        Returns:
-            tuple: (generated_code_str, full_response, latency)
-                generated_code_str: 生成的代码字符串
-                full_response: 完整的模型响应
-                latency: API调用延迟时间
-        """
-        log_message(f"Calling {api_provider.capitalize()} API with model {model_name}...")
-        
-        start_time = time.time()
-        try:
-            if api_provider == "anthropic":
-                log_message(f"Calling Anthropic API with model {model_name}...")
-                generated_code_str, full_response = anthropic_completion(
-                    system_prompt,
-                    model_name,
-                    base64_image,
-                    tetris_prompt
-                )
-            elif api_provider == "openai":
-                log_message(f"Calling OpenAI API with model {model_name}...")
-                generated_code_str, full_response = openai_completion(
-                    system_prompt,
-                    model_name,
-                    base64_image,
-                    tetris_prompt
-                )
-            elif api_provider == "gemini":
-                log_message(f"Calling Gemini API with model {model_name}...")
-                generated_code_str, full_response = gemini_completion(
-                    system_prompt,
-                    model_name,
-                    base64_image,
-                    tetris_prompt
-                )
-            else:
-                raise ValueError(f"Unsupported API provider: {api_provider}")
-        except Exception as api_error:
-            error_message = f"API调用错误: {str(api_error)}"
-            log_message(error_message)
-            
-            # 如果启用了增强日志，记录API错误
-            if enhanced_logging:
-                try:
-                    # 创建API错误日志目录
-                    api_error_folder = os.path.join(log_folder, "api_errors")
-                    os.makedirs(api_error_folder, exist_ok=True)
-                    
-                    # 记录错误到文件
-                    error_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    error_file = os.path.join(api_error_folder, f"error_{error_timestamp}.txt")
-                    with open(error_file, 'w', encoding='utf-8') as f:
-                        f.write(f"=== API Error at {datetime.now()} ===\n")
-                        f.write(f"Provider: {api_provider}\n")
-                        f.write(f"Model: {model_name}\n")
-                        f.write(f"Error: {str(api_error)}\n")
-                        
-                        # 如果是特定类型的错误，添加更多详细信息
-                        if hasattr(api_error, 'status_code'):
-                            f.write(f"Status Code: {api_error.status_code}\n")
-                        
-                        # 添加堆栈跟踪
-                        import traceback
-                        f.write("\n=== Stack Trace ===\n")
-                        f.write(traceback.format_exc())
-                except Exception as log_error:
-                    log_message(f"Error saving API error details: {log_error}")
-            
-            raise  # 重新抛出异常，让调用者处理
-        
-        end_time = time.time()
-        latency = end_time - start_time
-        return generated_code_str, full_response, latency
-    
-    # 新增函数：执行模型生成的代码
-    def execute_model_code(clean_code, initial_screenshot_path, region):
-        """
-        执行模型生成的代码
-        
-        Args:
-            clean_code: 清理后的Python代码
-            initial_screenshot_path: 初始截图路径
             region: 截图区域
             
         Returns:
-            float: 代码执行时间
+            tuple: (截图路径, 截图对象, base64编码)
         """
-        start_time = time.time()
-        
-        # 每次执行代码前先截图，以便检查是否有新方块
-        try:
-            # 使用与初始截图相同的方式截取
-            if enhanced_logging or save_all_states:
-                pre_exec_screenshot_path, _ = enhanced_screenshot(
-                    region, 
-                    suffix="_pre_exec",
-                    description="Pre-Execution State"
-                )
-                log_message(f"Pre-execution screenshot saved to: {pre_exec_screenshot_path}")
-            else:
-                pre_exec_screenshot_path, _ = safe_screenshot(
-                    region, 
-                    thread_id=thread_id, 
-                    output_dir=output_dir,
-                    suffix="_pre_exec"
-                )
-                log_message(f"Pre-execution screenshot saved to: {pre_exec_screenshot_path}")
-        except Exception as e:
-            error_msg = f"Error taking pre-execution screenshot: {e}"
-            log_message(error_msg)
-            # 提供默认值，防止后续代码出错
-            pre_exec_screenshot_path = initial_screenshot_path
-        
-        try:
-            # 检查是否需要启用紧急模式(新方块刚出现)
-            def check_new_piece(screenshot_path):
-                """
-                检查是否有新方块刚出现在顶部
-                """
-                try:
-                    # 检查文件是否存在
-                    if not os.path.exists(screenshot_path):
-                        log_message(f"Warning: Screenshot path does not exist: {screenshot_path}")
-                        return False
-                    
-                    # 打开截图
-                    img = Image.open(screenshot_path)
-                    # 转换为numpy数组
-                    img_array = np.array(img)
-                    
-                    # 仅检查顶部区域的一小部分
-                    # 假设游戏区域顶部是新方块出现的地方
-                    # 取前2行(根据Tetris的特性，足够检测新方块出现)
-                    top_rows = 2
-                    game_area_start_x = img.width // 3  # 假设游戏区域在窗口左侧
-                    top_area = img_array[:top_rows, :game_area_start_x]
-                    
-                    # 检查是否有彩色像素(非黑色背景)
-                    # 简化检测：如果有足够多的像素亮度超过阈值，认为有新方块
-                    is_bright = np.mean(top_area) > 20  # 亮度阈值
-                    
-                    return is_bright
-                except Exception as e:
-                    error_msg = f"Error checking for new piece: {e}"
-                    if enhanced_logging:
-                        log_message(error_msg)
-                    else:
-                        log_message(error_msg)
-                    return False
-            
-            # 检查是否有新方块出现，如果有，使用紧急模式
-            urgent_mode = check_new_piece(pre_exec_screenshot_path)
-            if urgent_mode:
-                log_message(f"!!! URGENT MODE: New piece detected !!!")
-            
-            # 尝试编译代码，看是否有语法错误
-            compile(clean_code, '<string>', 'exec')
-            # 如果没有语法错误，执行代码
-            log_message(f"Executing Python code...")
-            
-            # 将代码中的time.sleep替换为同步游戏的等待
-            # 首先，提取所有的time.sleep调用
-            import re
-            
-            # 修改代码，替换time.sleep为特殊标记
-            modified_code = re.sub(
-                r'time\.sleep\(([0-9.]+)\)',
-                r'# SLEEP: \1',
-                clean_code
+        log_message(f"Taking screenshot of region: {region}")
+        if enhanced_logging or save_all_states:
+            screenshot_path, screenshot = enhanced_screenshot(
+                region, 
+                suffix="_start",
+                description="Initial Game State"
             )
-            # 同样处理pyautogui.sleep
-            modified_code = re.sub(
-                r'pyautogui\.sleep\(([0-9.]+)\)',
-                r'# SLEEP: \1',
-                modified_code
+        else:
+            screenshot_path, screenshot = safe_screenshot(
+                region, 
+                thread_id=thread_id, 
+                output_dir=output_dir,
+                suffix="_start"
             )
-            
-            # 分成多行
-            code_lines = modified_code.splitlines()
-            
-            # 逐行执行代码，处理sleep语句
-            local_vars = {}
-            global_vars = {
-                'pyautogui': pyautogui,
-                'time': time,
-                'random': __import__('random')
-            }
-            
-            # 如果是紧急模式，提取并优先执行第一组移动命令
-            urgent_commands = []
-            if urgent_mode:
-                # 查找前几个press指令
-                for line in code_lines:
-                    line = line.strip()
-                    if 'press' in line and not line.startswith('#'):
-                        urgent_commands.append(line)
-                        # 只取前3个命令
-                        if len(urgent_commands) >= 3:
-                            break
-                
-                if urgent_commands:
-                    log_message(f"Executing urgent commands first: {urgent_commands}")
-                    # 执行紧急命令
-                    for cmd in urgent_commands:
-                        try:
-                            # 查找按键名称
-                            key_match = re.search(r'press\(["\']([^"\']+)["\']', cmd)
-                            if key_match:
-                                key_name = key_match.group(1)
-                                log_message(f"URGENT: Pressing key: {key_name}")
-                                
-                                # 执行按键
-                                exec(cmd, global_vars, local_vars)
-                                
-                                # 按键后极短暂等待，紧急模式下需要快速操作
-                                time.sleep(0.1)
-                                
-                                # 截图记录按键后的状态
-                                try:
-                                    key_screenshot_path, key_screenshot = safe_screenshot(
-                                        region, 
-                                        thread_id=thread_id, 
-                                        output_dir=output_dir,
-                                        suffix=f"_urgent_key_{key_name}"
-                                    )
-                                    # 红色边框表示紧急
-                                    draw = ImageDraw.Draw(key_screenshot)
-                                    draw.rectangle([(0, 0), (key_screenshot.width-1, key_screenshot.height-1)], outline="red", width=2)
-                                    draw.text((5, 5), f"Urgent: {key_name}", fill="red")
-                                    key_screenshot.save(key_screenshot_path)
-                                except Exception as e:
-                                    log_message(f"Error taking urgent key screenshot: {e}")
-                        except Exception as e:
-                            log_message(f"Error executing urgent command: {cmd}")
-                            log_message(f"Error: {e}")
-            
-            # 计算每个动作的大约等待时间，让代码执行能填满大部分plan_seconds
-            # 根据执行模式调整时间系数
-            if execution_mode == 'fast':
-                time_factor = 0.5  # 快速模式下动作时间减半
-            elif execution_mode == 'slow':
-                time_factor = 1.5  # 慢速模式下动作时间增加50%
-            else:  # 自适应模式
-                time_factor = 1.0  # 默认时间系数
-            
-            # 以实际的操作数量为基准分配时间
-            action_count = sum(1 for line in code_lines if 'press' in line and not line.startswith('#'))
-            # 加上sleep指令的时间
-            sleep_time_sum = 0
-            for line in code_lines:
-                sleep_match = re.search(r'# SLEEP: ([0-9.]+)', line)
-                if sleep_match:
-                    sleep_time_sum += float(sleep_match.group(1))
-            
-            # 调整action_timeout，确保代码有足够时间执行
-            action_timeout = 0.3 * time_factor  # 默认每个动作0.3秒
-            
-            if enhanced_logging:
-                log_message(f"Execution mode: {execution_mode}, Time factor: {time_factor}")
-                log_message(f"Actions: {action_count}, Sleep time: {sleep_time_sum:.1f}s")
-                log_message(f"Action timeout: {action_timeout:.2f}s per key press")
-            
-            # 如果设置了piece_limit，限制执行的动作数量
-            if piece_limit > 0 and action_count > 0:
-                # 每个方块约需4-6个动作（移动、旋转、等待）
-                actions_per_piece = 5
-                max_actions = piece_limit * actions_per_piece
-                
-                if action_count > max_actions:
-                    log_message(f"Limiting actions to {max_actions} (for {piece_limit} pieces)")
-                    # 将code_lines限制为指定的动作数量
-                    limited_lines = []
-                    action_counter = 0
-                    
-                    for line in code_lines:
-                        limited_lines.append(line)
-                        if 'press' in line and not line.startswith('#'):
-                            action_counter += 1
-                            if action_counter >= max_actions:
-                                break
-                    
-                    # 添加一些注释说明
-                    limited_lines.append(f"# Execution limited to {piece_limit} pieces ({max_actions} actions)")
-                    code_lines = limited_lines
-            
-            # 正常执行其余代码行
-            executed_actions = 0
-            for line in code_lines:
-                # 定期检查停止标志
-                if should_stop():
-                    log_message("Stop flag detected during code execution. Stopping...")
-                    break
-                    
-                line = line.strip()
-                # 跳过空行和注释行(不含sleep标记的)
-                if not line or (line.startswith('#') and '# SLEEP:' not in line):
-                    continue
-                    
-                # 处理sleep指令
-                sleep_match = re.search(r'# SLEEP: ([0-9.]+)', line)
-                if sleep_match:
-                    sleep_time = float(sleep_match.group(1)) * time_factor
-                    log_message(f"Waiting for {sleep_time:.1f}s...")
-                    
-                    # 分段睡眠，以便能够及时响应停止信号
-                    sleep_interval = 0.5  # 每0.5秒检查一次停止标志
-                    for _ in range(int(sleep_time / sleep_interval)):
-                        if should_stop():
-                            log_message("Stop flag detected during sleep. Stopping...")
-                            return time.time() - start_time  # 提前返回
-                        time.sleep(sleep_interval)
-                    
-                    # 处理可能的小数部分
-                    remainder = sleep_time % sleep_interval
-                    if remainder > 0 and not should_stop():
-                        time.sleep(remainder)
-                    
-                    # 等待后截图，确保游戏状态更新被捕获
-                    try:
-                        wait_screenshot_path, wait_screenshot = safe_screenshot(
-                            region, 
-                            thread_id=thread_id, 
-                            output_dir=output_dir,
-                            suffix=f"_wait_{sleep_time:.1f}s"
-                        )
-                        # 绿色表示等待
-                        draw = ImageDraw.Draw(wait_screenshot)
-                        draw.rectangle([(0, 0), (wait_screenshot.width-1, wait_screenshot.height-1)], outline="green", width=1)
-                        draw.text((5, 5), f"Wait: {sleep_time:.1f}s", fill="green")
-                        wait_screenshot.save(wait_screenshot_path)
-                    except Exception as e:
-                        log_message(f"Error taking wait screenshot: {e}")
-                # 处理按键命令
-                elif 'press' in line and not line.startswith('#'):
-                    try:
-                        # 查找按键名称
-                        key_match = re.search(r'press\(["\']([^"\']+)["\']', line)
-                        if key_match:
-                            key_name = key_match.group(1)
-                            log_message(f"Pressing key: {key_name}")
-                            
-                            # 执行按键
-                            exec(line, global_vars, local_vars)
-                            executed_actions += 1
-                            
-                            # 按键后等待，让游戏有时间响应，使用动态计算的等待时间
-                            # 给不同的按键应用不同的等待时间
-                            if key_name in ['space']:  # 对于空格键（落下），等待时间更长
-                                wait_time = 1.0 * time_factor
-                            else:
-                                wait_time = action_timeout
-                            
-                            time.sleep(wait_time)
-                            
-                            # 截图记录按键后的状态
-                            try:
-                                key_screenshot_path, key_screenshot = safe_screenshot(
-                                    region, 
-                                    thread_id=thread_id, 
-                                    output_dir=output_dir,
-                                    suffix=f"_key_{key_name}"
-                                )
-                                # 简单标记
-                                draw = ImageDraw.Draw(key_screenshot)
-                                draw.rectangle([(0, 0), (key_screenshot.width-1, key_screenshot.height-1)], outline="cyan", width=1)
-                                draw.text((5, 5), f"Key: {key_name}", fill="cyan")
-                                key_screenshot.save(key_screenshot_path)
-                            except Exception as e:
-                                log_message(f"Error taking key screenshot: {e}")
-                        else:
-                            # 普通执行
-                            exec(line, global_vars, local_vars)
-                    except Exception as e:
-                        log_message(f"Error executing line: {line}")
-                        log_message(f"Error: {e}")
-                else:
-                    # 普通执行其他代码行
-                    try:
-                        exec(line, global_vars, local_vars)
-                    except Exception as e:
-                        log_message(f"Error executing line: {line}")
-                        log_message(f"Error: {e}")
-            
-            # 代码执行后，等待一小段时间让游戏状态稳定下来
-            if executed_actions > 0:
-                stabilize_time = min(2.0, executed_actions * 0.2)
-                log_message(f"Stabilizing game state for {stabilize_time:.1f}s...")
-                time.sleep(stabilize_time)
-            
-            log_message(f"Code execution completed.")
-            
-        except Exception as e:
-            log_message(f"Error executing code: {e}")
-            import traceback
-            traceback.print_exc()
         
-        # 计算代码执行时间
-        execution_time = time.time() - start_time
-        return execution_time
+        log_message(f"Initial screenshot saved to: {screenshot_path}")
+        
+        # 转换为base64 - 使用BytesIO处理二进制数据
+        buffered = BytesIO()
+        screenshot.save(buffered, format="PNG")
+        base64_image = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        log_message(f"Screenshot encoded, preparing to call API...")
+        
+        return screenshot_path, screenshot, base64_image
     
-    tetris_prompt = f"""
-    Analyze the current Tetris board state and generate PyAutoGUI code to control Tetris 
-    for the next {plan_seconds} second(s). You can move left/right, rotate pieces. Focus on clearing lines and avoiding 
-    stacking that would cause a top-out.
-
-    At the time the code is executed, 3~5 seconds have elapsed. The game might have moved on to the next block if the stack is high.
-
-    However, in your code, consider only the current block or the next block.
-
-    The speed it drops is at around ~0.75s/grid bock.
-
-    ### General Tetris Controls (example keybinds):
-    - left: move piece left
-    - right: move piece right
-    - up: rotate piece clockwise
-    - down: accelerated drop （if necessary)
-
-    ### Strategies and Caveats:
-    1. If the stack is high, most likely you are controlling the "next" block due to latency.
-    2. Prioritize keeping the stack flat. Balance the two sides.
-    3. Consider shapes ahead of time. DO NOT rotate and quickly move the block again once it's position is decided.
-    4. Avoid creating holes.
-    5. If you see a chance to clear lines, rotate and move the block to correct positions.
-    6. Plan for your next piece as well, but do not top out.
-    7. The entire sequence of key presses should be feasible within {plan_seconds} second(s).
-
-    ### Output Format:
-    - Output ONLY the Python code for PyAutoGUI commands, e.g. `pyautogui.press("left")`.
-    - Include brief comments for each action.
-    - Do not print anything else besides these Python commands.
-    """
+    # 函数：调用API获取模型响应
+    def call_model_api(base64_image):
+        """
+        调用API获取模型响应
+        
+        Args:
+            base64_image: base64编码的图像
+            
+        Returns:
+            tuple: (生成的代码, 完整响应, 延迟时间)
+        """
+        # 构建提示词
+        log_message(f"Calling {api_provider.capitalize()} API with model {model_name}...")
+        
+        # 构建提示词
+        if api_provider.lower() in ["anthropic", "claude"]:
+            instruction = tetris_prompt + f"""
+            
+            Here's the current Tetris game state image:
+            
+            <image>
+            """
+            
+            # 专门为Anthropic API准备的请求格式
+            log_message(f"Calling Anthropic API with model {model_name}...")
+            
+            # 调用Anthropic Claude API
+            start_time = time.time()
+            
+            # 记录到控制台
+            if verbose_output:
+                print("Starting Anthropic API call...")
+            
+            try:
+                from tools.serving.api_providers import call_anthropic_with_image
+                response = call_anthropic_with_image(
+                    system_prompt=system_prompt,
+                    user_message=instruction,
+                    image_base64=base64_image,
+                    model=model_name
+                )
+                
+                # 提取生成的代码和完整响应
+                generated_code_str = response
+                full_response = response
+            except Exception as e:
+                log_message(f"Error calling Anthropic API: {e}")
+                traceback.print_exc()
+                # 返回空响应和错误信息
+                return f"# API Error: {str(e)}", f"ERROR: {str(e)}", 0
+            
+        elif api_provider.lower() in ["openai", "gpt4"]:
+            instruction = tetris_prompt
+            
+            log_message(f"Calling OpenAI API with model {model_name}...")
+            
+            # 调用OpenAI API
+            start_time = time.time()
+            
+            try:
+                from tools.serving.api_providers import call_openai_with_image
+                response = call_openai_with_image(
+                    system_prompt=system_prompt,
+                    user_message=instruction,
+                    image_base64=base64_image,
+                    model=model_name
+                )
+                
+                # 提取生成的代码和完整响应
+                generated_code_str = response
+                full_response = response
+            except Exception as e:
+                log_message(f"Error calling OpenAI API: {e}")
+                traceback.print_exc()
+                # 返回空响应和错误信息
+                return f"# API Error: {str(e)}", f"ERROR: {str(e)}", 0
+            
+        else:
+            log_message(f"Unsupported API provider: {api_provider}")
+            return "# Unsupported API provider", f"ERROR: Unsupported API provider {api_provider}", 0
+        
+        end_time = time.time()
+        latency = end_time - start_time
+        
+        # 输出摘要
+        if enhanced_logging:
+            log_message("\n--- API output ---")
+            # 只显示前100个字符，避免日志过长
+            preview = full_response[:100].replace('\n', ' ')
+            if len(full_response) > 100:
+                preview += "..."
+            log_message(preview)
+            log_message("[truncated]")
+        
+        return generated_code_str, full_response, latency
     
-    # 只在启动时打印提示信息，而不是每次迭代都打印
+    # 新函数：等待用户按下空格键
+    def wait_for_space_key():
+        """
+        等待用户按下空格键继续
+        
+        Returns:
+            bool: 如果用户按下了空格键返回True，如果应该停止返回False
+        """
+        from pynput import keyboard
+        
+        space_pressed = False
+        stop_listening = False
+        
+        def on_press(key):
+            nonlocal space_pressed, stop_listening
+            try:
+                # 检查是否按下空格键
+                if key == keyboard.Key.space:
+                    space_pressed = True
+                    stop_listening = True
+                    return False  # 停止监听
+                # 检查是否按下q键停止
+                elif hasattr(key, 'char') and key.char == 'q':
+                    stop_listening = True
+                    return False  # 停止监听
+            except AttributeError:
+                # 部分特殊键可能没有char属性，忽略这些错误
+                pass
+        
+        log_message("等待用户按下空格键继续，或按q键停止...")
+        
+        # 创建监听器
+        listener = keyboard.Listener(on_press=on_press)
+        listener.start()
+        
+        # 等待用户按键或停止信号
+        while not space_pressed and not stop_listening and not should_stop():
+            time.sleep(0.1)
+        
+        # 确保监听器停止
+        if listener.is_alive():
+            listener.stop()
+        
+        if should_stop() or (stop_listening and not space_pressed):
+            return False
+        
+        return True
+    
+    # 开始线程执行
     log_message(f"Using Tetris prompt with {plan_seconds}s planning time.")
     if verbose_output:
         log_message(f"Full prompt: {tetris_prompt}")
-
-    try:
-        iteration = 0
-        window_missing_count = 0  # 计数找不到窗口的次数
-        
-        # 启动定时截图线程
-        screenshot_thread = None
-        screenshot_stop_flag = False
-        
-        if screenshot_interval > 0 and log_folder:
-            def take_interval_screenshots():
-                log_message(f"Started interval screenshot thread with {screenshot_interval}s delay", print_message=False)
-                count = 0
-                while not screenshot_stop_flag and not should_stop():
-                    try:
-                        # 查找窗口区域
-                        region_to_capture = find_tetris_window()
-                        if not region_to_capture and manual_window_region:
-                            region_to_capture = manual_window_region
-                        
-                        if region_to_capture:
-                            count += 1
-                            interval_path, _ = enhanced_screenshot(
-                                region_to_capture, 
-                                suffix=f"_interval_{count}", 
-                                description=f"Interval {count}"
-                            )
-                            log_message(f"Took interval screenshot #{count}: {interval_path}", print_message=False)
-                    except Exception as e:
-                        log_message(f"Error taking interval screenshot: {e}", print_message=False)
+    
+    # 检查初始stop_flag
+    if should_stop():
+        log_message(f"Stop flag already set. Thread not starting.")
+        return "Thread not started due to stop flag"
+    
+    time.sleep(offset)
+    log_message(f"Starting after {offset}s delay... (Plan: {plan_seconds} seconds)")
+    
+    # 主循环
+    iteration = 0
+    window_missing_count = 0  # 计数找不到窗口的次数
+    
+    # 启动定时截图线程
+    screenshot_thread = None
+    screenshot_stop_flag = False
+    
+    if screenshot_interval > 0 and log_folder:
+        def take_interval_screenshots():
+            log_message(f"Started interval screenshot thread with {screenshot_interval}s delay", print_message=False)
+            count = 0
+            while not screenshot_stop_flag and not should_stop():
+                try:
+                    # 查找窗口区域
+                    region_to_capture = find_tetris_window()
+                    if not region_to_capture and manual_window_region:
+                        region_to_capture = manual_window_region
                     
-                    # 检查是否应该停止
-                    for _ in range(screenshot_interval * 2):  # 分段睡眠以便更快响应停止信号
-                        if screenshot_stop_flag or should_stop():
-                            break
-                        time.sleep(0.5)
+                    if region_to_capture:
+                        count += 1
+                        # 截图并保存
+                        screenshot_path, _ = safe_screenshot(
+                            region_to_capture, 
+                            thread_id=thread_id, 
+                            output_dir=output_dir,
+                            suffix=f"_interval_{count}"
+                        )
+                        log_message(f"Took interval screenshot #{count}: {screenshot_path}", print_message=False)
+                except Exception as e:
+                    log_message(f"Error in interval screenshot: {e}", print_message=False)
+                
+                # 等待下一次截图
+                time.sleep(screenshot_interval)
         
-            # 创建并启动线程
-            screenshot_thread = threading.Thread(target=take_interval_screenshots)
-            screenshot_thread.daemon = True
-            screenshot_thread.start()
+        # 启动截图线程
+        screenshot_thread = threading.Thread(target=take_interval_screenshots)
+        screenshot_thread.daemon = True
+        screenshot_thread.start()
+    
+    # 主循环
+    while not should_stop():
+        iteration += 1
+        if enhanced_logging:
+            log_message(f"=== Iteration {iteration} ===")
+        else:
+            print(f"\n[Thread {thread_id}] === Iteration {iteration} ===\n")
+        
+        try:
+            # 检测游戏窗口并获取区域
+            region, region_type = detect_game_window()
             
-        # Initialize this thread in the shared responses dictionary if tracking responses
-        if responses_dict is not None:
-            if "threads" not in responses_dict:
-                responses_dict["threads"] = {}
-            responses_dict["threads"][str(thread_id)] = {
-                "start_time": time.time(),
-                "responses": []
-            }
-        
-        # 检查是否已经被要求停止
-        if should_stop():
-            log_message(f"Stop flag already set. Thread not starting.")
-            return "Thread not started due to stop flag"
-        
-        time.sleep(offset)
-        log_message(f"Starting after {offset}s delay... (Plan: {plan_seconds} seconds)")
-        
-        # 主循环
-        while not should_stop():
-            iteration += 1
-            if enhanced_logging:
-                log_message(f"=== Iteration {iteration} ===")
-            else:
-                print(f"\n[Thread {thread_id}] === Iteration {iteration} ===\n")
+            # 再次检查停止标志
+            if should_stop():
+                log_message(f"Stop flag detected after window detection. Exiting...")
+                break
             
+            # 截取游戏画面
+            initial_screenshot_path, initial_screenshot, base64_image = capture_game_screen(region)
+            
+            # 调用API获取模型响应
             try:
-                # 检测游戏窗口并获取区域
-                region, region_type = detect_game_window()
+                generated_code_str, full_response, latency = call_model_api(base64_image)
                 
-                # 再次检查停止标志
-                if should_stop():
-                    log_message(f"Stop flag detected after window detection. Exiting...")
-                    break
+                # 更新响应时间统计
+                all_response_time.append(latency)
+                avg_latency = sum(all_response_time) / len(all_response_time)
                 
-                # 截取游戏画面
-                initial_screenshot_path, initial_screenshot, base64_image = capture_game_screen(region)
+                log_message(f"Request latency: {latency:.2f}s")
+                log_message(f"Average latency: {avg_latency:.2f}s")
                 
-                # 调用API获取模型响应
-                try:
-                    generated_code_str, full_response, latency = call_model_api(base64_image)
+                # 记录模型回复到日志文件
+                if enhanced_logging:
+                    log_message("模型回复已完成")
+                    log_message(f"请求延迟: {latency:.2f}s")
+                    log_message(f"平均延迟: {avg_latency:.2f}s")
                     
-                    # 更新响应时间统计
-                    all_response_time.append(latency)
-                    avg_latency = sum(all_response_time) / len(all_response_time)
-                    
-                    log_message(f"Request latency: {latency:.2f}s")
-                    log_message(f"Average latency: {avg_latency:.2f}s")
-                    
-                    # 记录模型回复到日志文件
-                    if enhanced_logging:
-                        log_message("模型回复已完成")
-                        log_message(f"请求延迟: {latency:.2f}s")
-                        log_message(f"平均延迟: {avg_latency:.2f}s")
+                    # 保存完整回复到文件
+                    try:
+                        response_folder = os.path.join(log_folder, f"thread_{thread_id}_responses")
+                        os.makedirs(response_folder, exist_ok=True)
+                        response_file = os.path.join(response_folder, f"response_{int(time.time())}.txt")
                         
-                        # 保存完整回复到文件
-                        try:
-                            response_folder = os.path.join(log_folder, f"thread_{thread_id}_responses")
-                            os.makedirs(response_folder, exist_ok=True)
-                            response_file = os.path.join(response_folder, f"response_{int(time.time())}.txt")
-                            
-                            with open(response_file, 'w', encoding='utf-8', errors='replace') as f:
-                                f.write(f"=== 模型回复 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
-                                f.write("<CURRENT_CURSOR_POSITION>\n")
-                                f.write(f"API Provider: {api_provider}\n")
-                                f.write(f"Model: {model_name}\n")
-                                f.write(f"Latency: {latency:.2f}s\n")
-                                f.write("="*50 + "\n\n")
-                                f.write(full_response)
-                                f.write("\n\n" + "="*50 + "\n\n")
-                                
-                                # 添加提取的代码
-                                f.write("提取的代码:\n")
-                                f.write(generated_code_str)
-                            
-                            log_message(f"完整回复已保存到: {response_file}")
-                        except Exception as e:
-                            log_message(f"保存模型回复时出错: {str(e)}")
-                    
-                    # 打印模型输出
-                    if verbose_output:
-                        log_message(f"=== DETAILED MODEL RESPONSE (Iteration {iteration}) ===")
-                        log_message(f"Response length: {len(full_response)} characters")
-                        log_message(f"Full response:\n{'='*80}\n{full_response}\n{'='*80}\n")
-                    else:
-                        # 只打印响应的简短版本
-                        truncated_response = full_response[:200] + "..." if len(full_response) > 200 else full_response
-                        print(f"\n[Thread {thread_id}] --- API output ---\n{truncated_response}\n[truncated]")
-                    
-                    # 保存响应到字典
-                    if responses_dict is not None and str(thread_id) in responses_dict["threads"]:
-                        response_data = {
-                            "iteration": iteration,
-                            "timestamp": time.time(),
-                            "latency": latency,
-                            "prompt": tetris_prompt,
-                            "full_response": full_response,
-                            "extracted_code": generated_code_str
-                        }
-                        responses_dict["threads"][str(thread_id)]["responses"].append(response_data)
-                    
-                    # 如果需要保存响应到文件
-                    if save_responses:
-                        response_file = os.path.join(output_dir, f"thread_{thread_id}", f"response_iter_{int(time.time())}.json")
-                        os.makedirs(os.path.dirname(response_file), exist_ok=True)
+                        with open(response_file, 'w', encoding='utf-8', errors='replace') as f:
+                            f.write(f"=== 模型回复 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+                            f.write(full_response)
+                            f.write("\n\n")
                         
-                        try:
-                            with open(response_file, 'w', encoding='utf-8') as f:
-                                json.dump(response_data, f, indent=2, ensure_ascii=False)
-                            log_message(f"Response saved to: {response_file}")
-                        except Exception as e:
-                            log_message(f"Error saving response: {e}")
-                    
+                        log_message(f"完整回复已保存到: {response_file}")
+                    except Exception as e:
+                        log_message(f"Error saving response: {e}")
+                
+                # 如果提供了响应存储字典，添加响应
+                if responses_dict is not None:
+                    response_data = {
+                        'timestamp': time.time(),
+                        'iteration': iteration,
+                        'full_response': full_response,
+                        'generated_code': generated_code_str,
+                        'latency': latency
+                    }
+                    responses_dict[thread_id].append(response_data)
                     thread_responses.append(response_data)
-                    
-                except Exception as e:
-                    log_message(f"Error calling API: {e}")
-                    time.sleep(5)
-                    continue
-                
-                # 检查是否应该停止
-                if should_stop():
-                    log_message(f"Stop flag detected before code execution. Exiting...")
-                    break
-                
-                # 提取和执行代码
-                try:
-                    # Extract Python code for execution
-                    log_message(f"Extracting Python code from response...")
-                    clean_code = extract_python_code(generated_code_str)
-                    log_message(f"Python code to be executed:\n{clean_code}\n")
-                    
-                    # 执行代码
-                    start_time = time.time()
-                    execution_time = execute_model_code(clean_code, initial_screenshot_path, region)
-                    end_time = time.time()
-                    
-                    log_message(f"Code execution completed in {execution_time:.2f}s")
-                    
-                except Exception as e:
-                    log_message(f"Error executing code: {e}")
-                    import traceback
-                    traceback.print_exc()
-                
-                log_message(f"Cycle completed, beginning next cycle...")
-                
-                # 计算并等待到下一个计划周期
-                elapsed = time.time() - end_time  # 计算代码执行耗时
-                wait_time = max(0, plan_seconds - elapsed - latency)  # 减去API调用和代码执行的时间
-                log_message(f"Waiting {wait_time:.2f}s until next cycle...")
-                
-                # 分段睡眠，以便能够及时响应停止信号
-                sleep_interval = 0.5  # 每0.5秒检查一次停止标志
-                for _ in range(int(wait_time / sleep_interval)):
-                    if should_stop():
-                        break
-                    time.sleep(sleep_interval)
-                
-                # 处理可能的小数部分
-                remainder = wait_time % sleep_interval
-                if remainder > 0 and not should_stop():
-                    time.sleep(remainder)
-                    
-            except Exception as main_loop_error:
-                log_message(f"Error in main loop: {main_loop_error}")
-                import traceback
-                traceback.print_exc()
-                # 休息一下再继续
+            except Exception as e:
+                log_message(f"Error calling API: {e}")
                 time.sleep(5)
                 continue
-
-    except KeyboardInterrupt:
-        log_message(f"Interrupted by user. Exiting...")
-    except Exception as e:
-        log_message(f"Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        log_message(f"Thread execution completed.")
-
-    # 记录所有回复到文件
-    if save_responses and thread_responses:
-        try:
-            thread_response_file = os.path.join(output_dir, f"thread_{thread_id}_responses.json")
-            with open(thread_response_file, 'w') as f:
-                json.dump({
-                    'thread_id': thread_id,
-                    'responses': thread_responses,
-                    'avg_response_time': sum(all_response_time) / len(all_response_time) if all_response_time else 0,
-                    'total_responses': len(thread_responses)
-                }, f, indent=2)
-            log_message(f"Saved {len(thread_responses)} responses to {thread_response_file}")
-        except Exception as e:
-            log_message(f"Error saving all responses: {e}")
+            
+            # 检查是否应该停止
+            if should_stop():
+                log_message(f"Stop flag detected before code execution. Exiting...")
+                break
+            
+            # 提取和执行代码
+            try:
+                # Extract Python code for execution
+                log_message(f"Extracting Python code from response...")
+                clean_code = extract_python_code(generated_code_str)
+                
+                if clean_code:
+                    # 输出代码内容用于确认
+                    log_message(f"Python code to be executed:")
+                    log_message(clean_code)
+                    
+                    if debug_pause:
+                        input(f"[Thread {thread_id}] Press Enter to continue with code execution...")
+                    
+                    # 执行代码
+                    execution_time = execute_model_code(clean_code, initial_screenshot_path, region)
+                else:
+                    log_message("No executable Python code found in response.")
+                    execution_time = 0
+            except Exception as e:
+                log_message(f"Error in code extraction or execution: {e}")
+                traceback.print_exc()
+            
+            # 如果启用了手动模式，等待用户按下空格键继续
+            if manual_mode:
+                if not wait_for_space_key():
+                    log_message("用户停止了执行。")
+                    break
+                else:
+                    log_message("用户按下了空格键，继续执行...")
+            
+            log_message(f"Cycle completed, beginning next cycle...")
+            
+            # 计算并等待到下一个计划周期
+            elapsed = execution_time  # 使用execute_model_code返回的执行时间
+            wait_time = max(0, plan_seconds - elapsed - latency)  # 减去API调用和代码执行的时间
+            log_message(f"Waiting {wait_time:.2f}s until next cycle...")
+            
+            # 分段等待，便于及时响应停止请求
+            segment_size = 0.5  # 每段0.5秒
+            segments = int(wait_time / segment_size)
+            remainder = wait_time - (segments * segment_size)
+            
+            for _ in range(segments):
+                if should_stop():
+                    log_message("Stop flag detected during wait time.")
+                    break
+                time.sleep(segment_size)
+            
+            if not should_stop() and remainder > 0:
+                time.sleep(remainder)
+                
+        except Exception as main_loop_error:
+            log_message(f"Error in main loop: {main_loop_error}")
+            import traceback
+            traceback.print_exc()
+            # 休息一下再继续
+            time.sleep(5)
+            
+            # 如果连续多次找不到窗口，考虑退出
+            if "window" in str(main_loop_error).lower():
+                window_missing_count += 1
+                if window_missing_count > 5:
+                    log_message("Too many window detection failures, exiting...")
+                    break
+            else:
+                # 重置计数器
+                window_missing_count = 0
     
     # 停止截图线程
     if screenshot_thread and screenshot_thread.is_alive():
         screenshot_stop_flag = True
-        # 等待截图线程退出（最多等待2秒）
         screenshot_thread.join(timeout=2)
     
-    return f"Thread completed after {iteration} iterations"
+    log_message("Thread execution completed.")
+    return "Thread execution completed."

@@ -104,7 +104,7 @@ def anthropic_completion(system_prompt, model_name, base64_image, prompt):
     try:
         response = client.messages.create(
             model=model_name,
-            max_tokens=4096,
+            max_tokens=1024,
             system=system,
             messages=messages
         )

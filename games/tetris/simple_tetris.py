@@ -34,8 +34,8 @@ GRID_HEIGHT = 20
 PREVIEW_SIZE = 4
 
 # 计算窗口尺寸
-WINDOW_WIDTH = BLOCK_SIZE * (GRID_WIDTH + 6)  # 额外空间用于显示下一个方块和分数
-WINDOW_HEIGHT = BLOCK_SIZE * GRID_HEIGHT
+SCREEN_WIDTH = BLOCK_SIZE * (GRID_WIDTH + 6)  # 额外空间用于显示下一个方块和分数
+SCREEN_HEIGHT = BLOCK_SIZE * GRID_HEIGHT
 
 # 颜色定义
 BLACK = (0, 0, 0)
@@ -75,10 +75,12 @@ class GameState:
         self.next_piece = None
         self.piece_x = 0
         self.piece_y = 0
-        self.fall_speed = 0.5  # 初始下落速度（秒/格）
+        self.fall_speed = 2.0  # 减慢下落速度（秒/格），原来为0.5
         self.last_fall_time = 0
         self.moves_made = []
         self.ai_control = True  # 默认AI控制
+        self.paused = False  # 添加暂停状态
+        self.auto_fall = False  # 禁用自动下落功能
         
     def generate_new_piece(self):
         # 随机选择一个方块
@@ -247,13 +249,14 @@ class GameState:
             
             # 更新下落速度
             self.fall_speed = max(0.1, 0.5 - (self.level - 1) * 0.05)
+            # self.fall_speed = 20
     
     def update(self, current_time):
-        if self.game_over or not self.current_piece:
+        if self.game_over or not self.current_piece or self.paused:
             return
             
-        # 自动下落
-        if current_time - self.last_fall_time > self.fall_speed:
+        # 只有在auto_fall为True时才自动下落
+        if self.auto_fall and current_time - self.last_fall_time > self.fall_speed:
             self.last_fall_time = current_time
             self.move_down()
     
@@ -285,7 +288,7 @@ class GameRenderer:
     def initialize(self):
         try:
             pygame.init()
-            self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
             pygame.display.set_caption("Simple Tetris")
             self.font = pygame.font.SysFont(None, 24)
             return True
@@ -380,50 +383,50 @@ class GameRenderer:
             return
             
         # 半透明覆盖层
-        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 128))
         self.screen.blit(overlay, (0, 0))
         
         # 游戏结束文本
         font = pygame.font.SysFont(None, 48)
         text = font.render("Game Over", True, RED)
-        text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 50))
+        text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50))
         self.screen.blit(text, text_rect)
         
         # 分数
         score_text = self.font.render(f"Final Score: {self.game_state.score}", True, WHITE)
-        score_rect = score_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
+        score_rect = score_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
         self.screen.blit(score_text, score_rect)
         
         # 重新开始提示
         restart_text = self.font.render("Press R to restart", True, WHITE)
-        restart_rect = restart_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 50))
+        restart_rect = restart_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50))
         self.screen.blit(restart_text, restart_rect)
     
     def draw_ai_status(self):
-        status_x = GRID_WIDTH * BLOCK_SIZE + 20
-        status_y = 350
+        """绘制AI状态信息"""
+        # 创建状态文本
+        ai_status = "AI: ON" if self.game_state.ai_control else "AI: OFF"
+        auto_fall = "Auto Fall: ON" if self.game_state.auto_fall else "Auto Fall: OFF"
         
-        # AI控制状态
-        control_text = self.font.render(
-            f"Control: {'AI' if self.game_state.ai_control else 'Player'}", 
-            True, 
-            GREEN if self.game_state.ai_control else YELLOW
-        )
-        self.screen.blit(control_text, (status_x, status_y))
+        # 绘制AI状态
+        ai_text = self.font.render(ai_status, True, WHITE)
+        ai_rect = ai_text.get_rect()
+        ai_rect.topleft = (10, 10)
+        self.screen.blit(ai_text, ai_rect)
         
-        # 提示
-        hint_text = self.font.render("Press A to toggle AI", True, WHITE)
-        self.screen.blit(hint_text, (status_x, status_y + 30))
+        # 绘制自动下落状态
+        fall_text = self.font.render(auto_fall, True, WHITE)
+        fall_rect = fall_text.get_rect()
+        fall_rect.topleft = (10, 40)
+        self.screen.blit(fall_text, fall_rect)
         
-        # 如果是AI控制，显示最后一次移动
-        if self.game_state.ai_control and self.game_state.moves_made:
-            moves_text = self.font.render(
-                f"Last move: {self.game_state.moves_made[-1]}", 
-                True, 
-                CYAN
-            )
-            self.screen.blit(moves_text, (status_x, status_y + 60))
+        # 如果游戏暂停，显示暂停状态
+        if self.game_state.paused:
+            pause_text = self.font.render("PAUSED", True, YELLOW)
+            pause_rect = pause_text.get_rect()
+            pause_rect.center = (SCREEN_WIDTH // 2, 50)
+            self.screen.blit(pause_text, pause_rect)
     
     def render(self):
         try:
@@ -448,16 +451,66 @@ class AIController:
     def __init__(self, game_state):
         self.game_state = game_state
         self.last_move_time = 0
-        self.move_delay = 0.1  # AI移动间隔时间（秒）
+        self.move_delay = 0.05  # 减少AI移动间隔时间（秒），原来为0.1
+        self.command_queue = []  # 添加命令队列
+        self.last_piece_move_time = 0  # 跟踪当前方块上次移动时间
+        self.move_count_for_current_piece = 0  # 当前方块操作计数
+        self.idle_time_threshold = 2.0  # 如果某个方块超过2秒无操作，考虑强制drop
     
     def update(self, current_time):
         if (not self.game_state.ai_control or 
-            self.game_state.game_over or 
+            self.game_state.game_over or
+            self.game_state.paused or  # 考虑暂停状态
             current_time - self.last_move_time < self.move_delay):
             return
         
         # 更新最后移动时间
         self.last_move_time = current_time
+        
+        # 如果当前方块长时间未操作且不是自动下落模式，强制下落
+        if (not self.game_state.auto_fall and 
+            current_time - self.last_piece_move_time > self.idle_time_threshold and 
+            self.move_count_for_current_piece > 0):
+            print("方块长时间未操作，强制下落")
+            if self.execute_action("drop"):
+                self.move_count_for_current_piece = 0  # 重置计数器
+                self.last_piece_move_time = current_time
+                return
+        
+        # 检查是否需要强制下落
+        # 如果当前位置可以下移但没有自动下落，适时移动一格
+        if not self.game_state.auto_fall:
+            # 保存当前位置
+            current_x, current_y = self.game_state.piece_x, self.game_state.piece_y
+            # 尝试下移一格
+            self.game_state.piece_y += 1
+            # 如果不是有效位置，恢复原位置
+            if not self.game_state.is_valid_position():
+                self.game_state.piece_y = current_y
+                # 如果无法下移，可能需要锁定方块
+                if random.random() < 0.1:  # 10%的概率触发drop操作
+                    self.execute_action("drop")
+                    self.move_count_for_current_piece = 0  # 重置计数器
+                    self.last_piece_move_time = current_time
+                    return
+            else:
+                # 如果可以下移，恢复原位置（让AI决定是否要移动）
+                self.game_state.piece_y = current_y
+        
+        # 如果有命令队列，优先执行队列中的命令
+        if self.command_queue:
+            action = self.command_queue.pop(0)
+            success = self.execute_action(action)
+            # 打印执行的命令
+            if success:
+                print(f"AI executed command: {action}")
+                self.last_piece_move_time = current_time
+                self.move_count_for_current_piece += 1
+                
+                # 如果是drop命令，重置计数器
+                if action == "drop" or action.endswith("_drop"):
+                    self.move_count_for_current_piece = 0
+                return
         
         # 简单AI：随机选择动作
         # 在实际应用中，这里可以由Claude等AI模型替代
@@ -466,21 +519,57 @@ class AIController:
         action = random.choices(actions, weights=weights, k=1)[0]
         
         # 执行选择的动作
-        if action == "left":
-            success = self.game_state.move_left()
-        elif action == "right":
-            success = self.game_state.move_right()
-        elif action == "rotate":
-            success = self.game_state.rotate_piece()
-        elif action == "drop":
-            self.game_state.drop_piece()
-            success = True
+        success = self.execute_action(action)
         
         # 记录移动
         if success:
             self.game_state.moves_made.append(action)
             if len(self.game_state.moves_made) > 10:
                 self.game_state.moves_made.pop(0)  # 保持最近10次移动的记录
+                
+            # 更新方块操作计数
+            self.last_piece_move_time = time.time()
+            self.move_count_for_current_piece += 1
+            
+            # 如果是drop命令，重置计数器
+            if action == "drop" or action.endswith("_drop"):
+                self.move_count_for_current_piece = 0
+    
+    def execute_action(self, action):
+        """执行指定的动作并返回是否成功"""
+        success = False
+        
+        if action == "left":
+            success = self.game_state.move_left()
+        elif action == "right":
+            success = self.game_state.move_right()
+        elif action == "down":
+            success = self.game_state.move_down()
+        elif action == "rotate":
+            success = self.game_state.rotate_piece()
+        elif action == "drop":
+            self.game_state.drop_piece()
+            success = True
+        # 添加多步组合动作
+        elif action == "left_drop":
+            self.game_state.move_left()
+            self.game_state.drop_piece()
+            success = True
+        elif action == "right_drop":
+            self.game_state.move_right()
+            self.game_state.drop_piece()
+            success = True
+        elif action == "rotate_drop":
+            self.game_state.rotate_piece()
+            self.game_state.drop_piece()
+            success = True
+        
+        return success
+    
+    def add_commands(self, commands):
+        """添加一系列命令到队列中"""
+        self.command_queue.extend(commands)
+        print(f"Added {len(commands)} commands to AI queue")
 
 # 主游戏类
 class SimpleTetris:
@@ -509,6 +598,24 @@ class SimpleTetris:
                     # 切换AI控制
                     self.game_state.ai_control = not self.game_state.ai_control
                     print(f"AI control: {self.game_state.ai_control}")
+                
+                # 切换自动下落功能
+                elif event.key == pygame.K_f:
+                    self.game_state.auto_fall = not self.game_state.auto_fall
+                    print(f"Auto fall: {self.game_state.auto_fall}")
+                
+                # 暂停/继续游戏
+                elif event.key == pygame.K_p:
+                    self.game_state.paused = not self.game_state.paused
+                    print(f"Game paused: {self.game_state.paused}")
+                
+                # 控制下落速度
+                elif event.key == pygame.K_PLUS or event.key == pygame.K_KP_PLUS:
+                    self.game_state.fall_speed = max(0.1, self.game_state.fall_speed - 0.1)
+                    print(f"Fall speed: {self.game_state.fall_speed:.1f}s/grid")
+                elif event.key == pygame.K_MINUS or event.key == pygame.K_KP_MINUS:
+                    self.game_state.fall_speed += 0.1
+                    print(f"Fall speed: {self.game_state.fall_speed:.1f}s/grid")
                 
                 # 退出游戏
                 elif event.key == pygame.K_ESCAPE:
@@ -596,6 +703,42 @@ class SimpleTetris:
             pygame.quit()
             print("Game exited")
 
+    def send_ai_commands(self, commands):
+        """向AI控制器发送一系列命令
+
+        Args:
+            commands (list): 要执行的命令列表，如["left", "rotate", "right", "drop"]
+        
+        Returns:
+            bool: 命令是否已添加到队列
+        """
+        if not self.game_state.ai_control:
+            print("Warning: AI control is OFF. Commands won't be executed unless AI mode is enabled.")
+            return False
+            
+        # 确保命令有效
+        valid_commands = ["left", "right", "down", "rotate", "drop", 
+                         "left_drop", "right_drop", "rotate_drop"]
+        filtered_commands = [cmd for cmd in commands if cmd in valid_commands]
+        
+        if len(filtered_commands) != len(commands):
+            invalid = set(commands) - set(valid_commands)
+            print(f"Warning: Invalid commands removed: {invalid}")
+        
+        if not filtered_commands:
+            print("No valid commands provided")
+            return False
+            
+        # 添加命令到AI队列
+        self.ai.add_commands(filtered_commands)
+        print(f"Added {len(filtered_commands)} commands to AI queue: {filtered_commands}")
+        
+        # 确保游戏未暂停
+        if self.game_state.paused:
+            print("Warning: Game is paused. Commands will execute when resumed.")
+            
+        return True
+
 # 启动游戏
 if __name__ == "__main__":
     print("\n---- Simple Tetris Game ----")
@@ -603,8 +746,15 @@ if __name__ == "__main__":
     print("  Arrow keys - Move/rotate piece")
     print("  Space - Drop piece")
     print("  A - Toggle AI control")
+    print("  F - Toggle auto fall (default: OFF)")
+    print("  P - Pause/Resume game")
+    print("  +/- - Increase/Decrease fall speed")
     print("  R - Restart (when game over)")
     print("  ESC - Quit")
+    print("\nAI Mode Features:")
+    print("  - AI can control pieces with commands: left, right, down, rotate, drop")
+    print("  - Also supports combo moves: left_drop, right_drop, rotate_drop")
+    print("  - When auto fall is OFF, pieces only move by AI/player commands")
     print("----------------------------\n")
     
     # 尝试启动游戏
