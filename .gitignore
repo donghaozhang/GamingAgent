@@ -57,3 +57,5 @@ desktop.ini
 
 # Environment variables
 .env
+*.png
+game_logs
