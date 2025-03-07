@@ -77,7 +77,7 @@ TETRIS_WINDOW_TITLE = "Simple Tetris"  # Window title to look for
 
 
 class TetrisClaudeIterator:
-    def __init__(self, model=None, output_dir=None, window_title=None):
+    def __init__(self, model=None, output_dir=None, window_title=None, save_responses=False):
         self.client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
         self.iteration = 0
         self.stop_flag = False
@@ -86,10 +86,11 @@ class TetrisClaudeIterator:
         self.model = model or MODEL
         self.output_dir = output_dir or OUTPUT_DIR
         self.window_title = window_title or TETRIS_WINDOW_TITLE
+        self.save_responses = save_responses
         
         self.session_dir = os.path.join(self.output_dir, f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
         self.screenshots_dir = os.path.join(self.session_dir, "screenshots")
-        self.responses_dir = os.path.join(self.session_dir, "responses")
+        self.responses_dir = os.path.join(self.session_dir, "responses") if save_responses else None
         self.manual_window_position = None
         
         # Simulation mode flag and state
@@ -101,10 +102,11 @@ class TetrisClaudeIterator:
         
         # Create output directories
         os.makedirs(self.screenshots_dir, exist_ok=True)
-        os.makedirs(self.responses_dir, exist_ok=True)
+        if self.save_responses:
+            os.makedirs(self.responses_dir, exist_ok=True)
         
         # Create log file
-        self.log_path = os.path.join(self.session_dir, "session_log.txt")
+        self.log_path = os.path.join(self.session_dir, "session_log")
         with open(self.log_path, "w", encoding="utf-8") as f:
             f.write(f"=== Tetris Claude Iterator Session started at {datetime.now()} ===\n\n")
             f.write(f"Model: {self.model}\n")
@@ -152,8 +154,11 @@ Here's the current Tetris game state image:
         print(log_entry)
         
         # Save to log file
-        with open(self.log_path, "a", encoding="utf-8") as f:
-            f.write(log_entry + "\n")
+        try:
+            with open(self.log_path, "a", encoding="utf-8", errors="replace") as f:
+                f.write(log_entry + "\n")
+        except Exception as e:
+            print(f"Error writing to log file: {e}")
 
     def find_tetris_window(self):
         """Find the Tetris window coordinates"""
@@ -455,10 +460,10 @@ Here's the current Tetris game state image:
         # If we're using a simulated board, return that instead
         if self.use_simulated_board and self.simulated_board:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-            screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_simulated_iter_{self.iteration}.png")
-            self.simulated_board.save(screenshot_path)
+            screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_simulated_iter_{self.iteration}")
+            self.simulated_board.save(screenshot_path + ".png")  # Still need .png for PIL to save properly
             self.log_message(f"Simulated Tetris board saved to: {screenshot_path}")
-            return screenshot_path, self.simulated_board
+            return screenshot_path + ".png", self.simulated_board
             
         # Otherwise capture a real screenshot
         try:
@@ -471,8 +476,8 @@ Here's the current Tetris game state image:
             
             # Save screenshot
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-            screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_iter_{self.iteration}.png")
-            screenshot.save(screenshot_path)
+            screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_iter_{self.iteration}")
+            screenshot.save(screenshot_path + ".png")  # Still need .png for PIL to save properly
             
             # Add timestamp to screenshot
             draw = ImageDraw.Draw(screenshot)
@@ -482,11 +487,11 @@ Here's the current Tetris game state image:
                 font = ImageFont.load_default()
             
             draw.text((10, 10), f"{timestamp} - Iteration {self.iteration}", fill="white", font=font)
-            screenshot.save(screenshot_path)
+            screenshot.save(screenshot_path + ".png")
             
             self.log_message(f"Screenshot saved to: {screenshot_path}")
             
-            return screenshot_path, screenshot
+            return screenshot_path + ".png", screenshot
             
         except Exception as e:
             self.log_message(f"Error capturing screenshot: {str(e)}")
@@ -530,17 +535,23 @@ Here's the current Tetris game state image:
             # Extract content
             response_content = response.content[0].text
             
-            # Save the response
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            response_path = os.path.join(self.responses_dir, f"{timestamp}_response_{self.iteration}.txt")
-            with open(response_path, "w", encoding="utf-8") as f:
-                f.write(f"=== Claude API Response (Iteration {self.iteration}) ===\n")
-                f.write(f"Timestamp: {timestamp}\n")
-                f.write(f"Model: {self.model}\n")
-                f.write(f"API Latency: {elapsed_time:.2f}s\n\n")
-                f.write(response_content)
+            # Log response to session log but don't create separate files
+            self.log_message(f"=== Claude API Response (Iteration {self.iteration}) ===")
+            self.log_message(f"Model: {self.model}")
+            self.log_message(f"API Latency: {elapsed_time:.2f}s")
             
-            self.log_message(f"Response saved to: {response_path}")
+            # Save the response if enabled
+            if self.save_responses:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                response_path = os.path.join(self.responses_dir, f"{timestamp}_response_{self.iteration}")
+                with open(response_path, "w", encoding="utf-8") as f:
+                    f.write(f"=== Claude API Response (Iteration {self.iteration}) ===\n")
+                    f.write(f"Timestamp: {timestamp}\n")
+                    f.write(f"Model: {self.model}\n")
+                    f.write(f"API Latency: {elapsed_time:.2f}s\n\n")
+                    f.write(response_content)
+                
+                self.log_message(f"Response saved to: {response_path}")
             
             return response_content
             
@@ -645,8 +656,8 @@ Here's the current Tetris game state image:
         
         # Take a pre-execution screenshot of the initial state
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        pre_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_pre_execution_{self.iteration}.png")
-        self.simulated_board.save(pre_screenshot_path)
+        pre_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_pre_execution_{self.iteration}")
+        self.simulated_board.save(pre_screenshot_path + ".png")  # Still need .png for PIL to save properly
         
         # Simulate piece movement based on actions
         if self.use_simulated_board and self.current_piece:
@@ -726,8 +737,8 @@ Here's the current Tetris game state image:
         
         # Take a post-execution screenshot of the updated state
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        post_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_post_execution_{self.iteration}.png")
-        self.simulated_board.save(post_screenshot_path)
+        post_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_post_execution_{self.iteration}")
+        self.simulated_board.save(post_screenshot_path + ".png")  # Still need .png for PIL to save properly
         self.log_message(f"Post-execution screenshot saved to: {post_screenshot_path}")
         
         # Also execute the code using PyAutoGUI for real-game scenarios
@@ -895,6 +906,26 @@ Here's the current Tetris game state image:
             self.log_message("=== Tetris Claude Iterator finished ===")
 
 
+def cleanup_txt_files():
+    """Remove any .txt files in the claude_tetris_outputs directory"""
+    try:
+        base_dir = OUTPUT_DIR
+        if not os.path.exists(base_dir):
+            return
+            
+        # Walk through all subdirectories
+        for root, dirs, files in os.walk(base_dir):
+            for file in files:
+                if file.endswith('.txt'):
+                    file_path = os.path.join(root, file)
+                    try:
+                        os.remove(file_path)
+                        print(f"Removed: {file_path}")
+                    except Exception as e:
+                        print(f"Error removing {file_path}: {e}")
+    except Exception as e:
+        print(f"Error cleaning up .txt files: {e}")
+
 def main():
     """Main function"""
     # Check if the script is run directly
@@ -917,10 +948,23 @@ def main():
     parser.add_argument("--fill", type=int, default=30, help="Fill percentage for complex board (default: 30)")
     parser.add_argument("--height", type=int, default=15, help="Maximum height for complex board (default: 15)")
     
+    # Output options
+    parser.add_argument("--save-responses", action="store_true", help="Save API responses to files")
+    parser.add_argument("--cleanup", action="store_true", help="Remove any existing .txt files in the output directory")
+    
     args = parser.parse_args()
     
+    # Clean up .txt files if requested
+    if args.cleanup:
+        cleanup_txt_files()
+    
     # Create and run the iterator with custom settings
-    iterator = TetrisClaudeIterator(model=args.model, output_dir=args.output_dir, window_title=args.window_title)
+    iterator = TetrisClaudeIterator(
+        model=args.model, 
+        output_dir=args.output_dir, 
+        window_title=args.window_title,
+        save_responses=args.save_responses
+    )
     
     # Set manual window position if provided
     if args.window:
