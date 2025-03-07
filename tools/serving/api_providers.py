@@ -1,5 +1,8 @@
 import os
 from dotenv import load_dotenv
+import time
+import base64
+import json
 
 # Load environment variables from .env file
 load_dotenv()
@@ -8,40 +11,68 @@ from openai import OpenAI
 import anthropic
 import google.generativeai as genai
 
+# Import extract_code function
+from tools.utils import extract_code
+
+# Avoid repeating import for extract_python_code
+try:
+    from tools.utils import extract_python_code
+except ImportError:
+    # If already imported, avoid repeating import error
+    pass
+
 def openai_completion(system_prompt, model_name, base64_image, prompt):
+    """
+    Call the OpenAI API with an image and prompt.
+    
+    Args:
+        system_prompt: System prompt for the API
+        model_name: OpenAI model name
+        base64_image: Base64 encoded image
+        prompt: User prompt
+        
+    Returns:
+        str: Generated code from the API
+    """
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    messages = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{base64_image}"
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    },
-                ],
+    
+    messages = []
+    
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    
+    content = [
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/png;base64,{base64_image}",
+                "detail": "high"
             }
-        ]
-
-    response = client.chat.completions.create(
-        model=model_name,
-        messages=messages,
-        temperature=0,
-        max_tokens=1024,
-    )
-
-    generated_code_str = response.choices[0].message.content
-     
-    return generated_code_str
+        },
+        {
+            "type": "text",
+            "text": prompt
+        }
+    ]
+    
+    messages.append({"role": "user", "content": content})
+    
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            max_tokens=4096,
+        )
+    except Exception as e:
+        print(f"error: {e}")
+        return "error", "error: " + str(e)
+    
+    full_response = response.choices[0].message.content
+    generated_code_str = extract_code(full_response)
+    
+    return generated_code_str, full_response
 
 def anthropic_completion(system_prompt, model_name, base64_image, prompt):
-    import time
-    
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     messages = [
                 {
@@ -63,43 +94,32 @@ def anthropic_completion(system_prompt, model_name, base64_image, prompt):
                 }
             ]
     
-    try:
-        print("Starting Anthropic API call...")
-        # Use a non-streaming version with timeout
-        response = client.messages.create(
-                max_tokens=1024,
-                messages=messages,
-                temperature=0,
-                system=system_prompt,
-                model=model_name,
-                timeout=30  # 30 second timeout
-            )
-        
-        print("Anthropic API call completed successfully")
-        generated_code_str = response.content[0].text
-        
-    except Exception as e:
-        print(f"Error during Anthropic API call: {e}")
-        # Return a simple fallback response if API call fails
-        generated_code_str = """
-        # Fallback response due to API timeout or error
-        # Moving tetris piece to a safe position
-        import pyautogui
-        import time
-        
-        # Move left to center piece
-        pyautogui.press('left')
-        time.sleep(0.2)
-        
-        # Rotate if needed
-        pyautogui.press('up')
-        time.sleep(0.2)
-        
-        # Drop the piece
-        pyautogui.press('space')
-        """
+    t0 = time.time()
     
-    return generated_code_str
+    print("Starting Anthropic API call...")
+    system = None
+
+    if system_prompt:
+        system = system_prompt
+    try:
+        response = client.messages.create(
+            model=model_name,
+            max_tokens=4096,
+            system=system,
+            messages=messages
+        )
+    except Exception as e:
+        print(f"error: {e}")
+        return "error", "error: " + str(e)
+
+    print("Anthropic API call completed successfully")
+    
+    t1 = time.time()
+
+    full_response = response.content[0].text
+    generated_code_str = extract_code(full_response)
+
+    return generated_code_str, full_response
 
 def gemini_completion(system_prompt, model_name, base64_image, prompt):
     genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -119,7 +139,9 @@ def gemini_completion(system_prompt, model_name, base64_image, prompt):
         )
     except Exception as e:
         print(f"error: {e}")
+        return "error", "error: " + str(e)
 
-    generated_code_str = response.text
+    full_response = response.text
+    generated_code_str = extract_code(full_response)
 
-    return generated_code_str
+    return generated_code_str, full_response

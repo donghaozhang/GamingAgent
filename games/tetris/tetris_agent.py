@@ -355,6 +355,10 @@ def main():
     parser.add_argument('--debug_pause', action='store_true', help='Pause for debugging between actions')
     parser.add_argument('--no_launch_game', action='store_true', help='Do not launch the Tetris game')
     parser.add_argument('--use_original_tetris', action='store_true', help='Use original Tetris instead of simplified version')
+    parser.add_argument('--screenshot_interval', default=0, type=int, help='Take additional screenshots every N seconds (0 to disable)')
+    parser.add_argument('--enhanced_logging', action='store_true', help='Enable enhanced logging with timestamps')
+    parser.add_argument('--save_all_states', action='store_true', help='Save screenshots for all game states')
+    parser.add_argument('--log_folder', default='game_logs', help='Folder for storing logs and additional screenshots')
     
     args = parser.parse_args()
     
@@ -368,6 +372,25 @@ def main():
     conda_env, conda_prefix = get_conda_env_info()
     if conda_env and conda_prefix:
         print(f"Running in conda environment: {conda_env} ({conda_prefix})")
+    
+    # 创建日志文件夹
+    if args.enhanced_logging or args.save_all_states or args.screenshot_interval > 0:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_folder = os.path.join(args.log_folder, f"session_{timestamp}")
+        os.makedirs(log_folder, exist_ok=True)
+        
+        # 创建日志文件
+        log_file = os.path.join(log_folder, "game_log.txt")
+        with open(log_file, 'w') as f:
+            f.write(f"=== Tetris Agent Session Started at {timestamp} ===\n")
+            f.write(f"Arguments: {json.dumps(vars(args), indent=2)}\n")
+            f.write(f"System info: {platform.system()} {platform.release()}\n")
+            f.write("="*50 + "\n\n")
+        
+        print(f"Enhanced logging enabled. Logs will be saved to {log_file}")
+    else:
+        log_folder = None
+        log_file = None
     
     # 设置手动窗口区域
     manual_window_region = None
@@ -401,11 +424,11 @@ def main():
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.max_threads) as executor:
             # 创建worker线程
             futures = []
-            for thread_id in range(args.min_threads):
+            for i in range(args.min_threads):
                 future = executor.submit(
                     worker_tetris,
-                    thread_id,
-                    thread_id % 10 * 100,  # 偏移量
+                    i,
+                    i % 10 * 100,  # 偏移量
                     "You are a helpful assistant that plays Tetris. When asked to help the player, you should analyze the visible game state from the image, identify the current and next piece, and suggest the best move considering piece placement, line clearing, and maintaining a good board structure. Explain your reasoning based on Tetris strategy principles.",
                     args.api_provider,
                     args.model_name,
@@ -416,7 +439,13 @@ def main():
                     responses_dict,
                     manual_window_region,
                     args.debug_pause,
-                    lambda: stop_flag  # 使用lambda获取最新的stop_flag值
+                    lambda: stop_flag,  # 使用lambda获取最新的stop_flag值
+                    # 添加新的参数
+                    log_folder=log_folder,
+                    log_file=log_file,
+                    screenshot_interval=args.screenshot_interval,
+                    save_all_states=args.save_all_states,
+                    enhanced_logging=args.enhanced_logging
                 )
                 futures.append(future)
             
@@ -445,7 +474,15 @@ def main():
                         args.save_responses,
                         args.output_dir,
                         responses_dict,
-                        manual_window_region
+                        manual_window_region,
+                        args.debug_pause,
+                        lambda: stop_flag,  # 使用lambda获取最新的stop_flag值
+                        # 添加新的参数
+                        log_folder=log_folder,
+                        log_file=log_file,
+                        screenshot_interval=args.screenshot_interval,
+                        save_all_states=args.save_all_states,
+                        enhanced_logging=args.enhanced_logging
                     )
                     futures.append(future)
             

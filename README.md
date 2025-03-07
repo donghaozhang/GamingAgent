@@ -233,6 +233,34 @@ cd $YOUR_WORKPLACE/GamingAgent
 python games/tetris/tetris_agent.py
 ```
 
+#### Enhanced Logging and Screenshot Features
+
+For more detailed logging and enhanced screenshot capabilities, we provide an enhanced launcher:
+
+```
+cd $YOUR_WORKPLACE/GamingAgent
+python run_tetris_enhanced.py
+```
+
+This enhanced version provides:
+- Automatic periodic screenshots (every 5 seconds by default)
+- Enhanced logging with timestamps and detailed game state information
+- Screenshots saved in organized folders with timestamps and descriptions
+- All game states screenshots preserved for analysis
+- Complete model responses saved to text files for review
+
+You can customize these features with additional parameters:
+```
+python run_tetris_enhanced.py --screenshot-interval=10 --no-enhanced-logging
+```
+
+Parameters include:
+- `--screenshot-interval=N`: Take screenshots every N seconds (default: 5)
+- `--no-enhanced-logging`: Disable enhanced logging
+- `--no-save-all-states`: Don't save screenshots for all game states
+
+All logs and screenshots are saved in a timestamped folder under `game_logs/session_YYYYMMDD_HHMMSS/` for easy reference. Model responses are saved in `thread_X_responses/` subfolders.
+
 #### Other command options
 ```
 --api_provider: API provider to use.
