@@ -249,81 +249,103 @@ def stop_tetris_game():
         print("Using --no_launch_game, not searching for other Tetris processes")
         return
     
-    # 检查是否有其他Tetris进程在运行
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-        try:
-            # 查找Python进程，且命令行中包含Tetris关键词
-            if 'python' in proc.name().lower() and any(
-                keyword.lower() in arg.lower() 
-                for arg in proc.cmdline() if arg
-                for keyword in ['tetris', 'simple_tetris']
-            ):
-                print(f"Found existing Tetris process (PID: {proc.pid}), terminating it first...")
-                try:
-                    proc.kill()  # 直接终止进程
-                    proc.wait(timeout=2)  # 等待进程结束，最多2秒
-                except (psutil.NoSuchProcess, psutil.TimeoutExpired):
-                    print(f"Could not wait for process {proc.pid} to terminate")
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
-            print(f"Error accessing process: {e}")
+    # 使用PSUtil查找并终止可能是Tetris的进程
+    tetris_keywords = ['tetris', 'TETRIS', 'Tetris', 'simple_tetris', 'Simple_tetris']
+    try:
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            # 遍历所有进程
+            try:
+                cmd = proc.cmdline()
+                name = proc.name()
+                # 检查命令行参数和进程名，找到可能的Tetris进程
+                is_tetris = False
+                for keyword in tetris_keywords:
+                    if any(keyword in str(c) for c in cmd) or keyword in name:
+                        is_tetris = True
+                        break
+                        
+                if is_tetris:
+                    print(f"Found potential Tetris process: {proc.pid} - {name} - {' '.join(cmd[:3])}")
+                    try:
+                        proc.kill()
+                        print(f"Process {proc.pid} terminated")
+                    except psutil.AccessDenied:
+                        print(f"Could not terminate process {proc.pid}: Access denied")
+                    except Exception as e:
+                        print(f"Error terminating process {proc.pid}: {e}")
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+    except Exception as e:
+        print(f"Error searching for Tetris processes: {e}")
 
-# 键盘监听函数，使用keyboard库接收"q"键
+# 键盘监听函数
 def key_listener():
-    """
-    启动一个键盘监听线程，监听'q'键来停止所有线程
-    """
-    if not KEYBOARD_AVAILABLE:
-        print("Keyboard library not available, key listener not started")
-        return None
-        
-    print("Starting keyboard listener. Press 'q' to stop all threads.")
+    global stop_flag
     
+    if not KEYBOARD_AVAILABLE:
+        print("Keyboard module not available. Press Ctrl+C to stop.")
+        return
+        
     def on_q_pressed(e):
-        """按下q键时的回调函数"""
+        """当按下q键时停止所有线程"""
+        global stop_flag
         if e.name == 'q':
             print("'q' key pressed, stopping all threads...")
-            global stop_flag
             stop_flag = True
-            # 也停止游戏
-            stop_tetris_game()
-            
-    # 注册按键监听
+            # 停止监听器
+            return False
+    
+    # 设置监听函数
     keyboard.on_press(on_q_pressed)
+    print("Starting keyboard listener. Press 'q' to stop all threads.")
 
-# 信号处理函数，用于处理Ctrl+C等信号
+# 信号处理函数
 def signal_handler(sig, frame):
-    """处理中断信号，确保程序可以优雅地退出"""
-    print("Interrupt signal received, stopping all threads...")
+    """SIGINT信号处理器（Ctrl+C）"""
     global stop_flag
+    print("\nReceived interrupt signal. Stopping all threads...")
     stop_flag = True
     # 停止游戏进程
     stop_tetris_game()
-    sys.exit(0)
 
+# 等待任一任务完成
 def wait_for_any_result(futures, timeout=0.5):
     """
-    等待任何一个future完成，如果有完成的future，从列表中移除它并返回结果
+    等待任一Future完成，并返回完成的和未完成的Future
     
     Args:
         futures (list): Future对象列表
-        timeout (float): 每次等待的超时时间（秒）
+        timeout (float): 检查间隔，单位秒
         
     Returns:
-        tuple: (完成的future列表, 剩余的future列表)
+        tuple: (完成的Future列表, 未完成的Future列表)
     """
-    # 如果没有future，直接返回
+    global stop_flag
+    # 直接返回空列表，如果没有Future
     if not futures:
         return [], []
+        
+    # 使用FIRST_COMPLETED等待至少一个任务完成
+    # 但设置短的超时，以便能够响应停止标志
+    done, not_done = [], list(futures)
     
-    # 使用wait方法等待任何一个future完成
-    done, not_done = concurrent.futures.wait(
-        futures,
-        timeout=timeout,
-        return_when=concurrent.futures.FIRST_COMPLETED
-    )
-    
-    # 返回完成的和未完成的future
-    return list(done), list(not_done)
+    while not stop_flag and not_done:
+        # 使用wait并设置超时，这样能定期检查stop_flag
+        just_done, still_not_done = concurrent.futures.wait(
+            not_done, 
+            timeout=timeout,
+            return_when=concurrent.futures.FIRST_COMPLETED
+        )
+        
+        # 更新完成和未完成列表
+        done.extend(just_done)
+        not_done = list(still_not_done)
+        
+        # 如果有任务完成，返回结果
+        if just_done:
+            break
+            
+    return done, not_done
 
 system_prompt = (
     "You are an expert AI agent specialized in playing Tetris gameplay, search for and execute optimal moves given each game state. Prioritize line clearing over speed."
@@ -364,9 +386,9 @@ def main():
     parser.add_argument('--enhanced_logging', action='store_true', help='Enable enhanced logging with timestamps')
     parser.add_argument('--save_all_states', action='store_true', help='Save screenshots for all game states')
     parser.add_argument('--log_folder', default='game_logs', help='Folder for storing logs and additional screenshots')
-
+    
     args = parser.parse_args()
-
+    
     # 打印参数信息
     print(f"Starting with {args.min_threads} threads using policy '{args.thread_policy}'...")
     print(f"API Provider: {args.api_provider}, Model Name: {args.model_name}")
@@ -378,32 +400,59 @@ def main():
     if conda_env and conda_prefix:
         print(f"Running in conda environment: {conda_env} ({conda_prefix})")
     
-    # 创建日志文件夹
-    if args.enhanced_logging or args.save_all_states or args.screenshot_interval > 0:
+    # 处理日志文件夹，添加时间戳
+    log_folder = None
+    log_file = None
+    if args.enhanced_logging or args.screenshot_interval > 0 or args.save_all_states:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_folder = os.path.join(args.log_folder, f"session_{timestamp}")
-        os.makedirs(log_folder, exist_ok=True)
+        if args.log_folder:
+            # 使用用户指定的日志文件夹
+            log_folder = os.path.join(args.log_folder, f"session_{timestamp}")
+        else:
+            # 使用默认日志文件夹
+            log_folder = os.path.join("game_logs", f"session_{timestamp}")
         
-        # 创建日志文件
+        # 创建日志文件夹和主日志文件
+        os.makedirs(log_folder, exist_ok=True)
         log_file = os.path.join(log_folder, "game_log.txt")
         with open(log_file, 'w') as f:
-            f.write(f"=== Tetris Agent Session Started at {timestamp} ===\n")
-            f.write(f"Arguments: {json.dumps(vars(args), indent=2)}\n")
-            f.write(f"System info: {platform.system()} {platform.release()}\n")
+            f.write(f"=== Tetris Game Session - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+            f.write(f"API Provider: {args.api_provider}\n")
+            f.write(f"Model: {args.model_name}\n")
+            f.write(f"Plan seconds: {args.plan_seconds}\n")
+            f.write(f"Thread policy: {args.thread_policy}\n")
+            f.write(f"Execution mode: {args.execution_mode}\n")
+            f.write(f"Piece limit: {args.piece_limit}\n")
             f.write("="*50 + "\n\n")
         
         print(f"Enhanced logging enabled. Logs will be saved to {log_file}")
-    else:
-        log_folder = None
-        log_file = None
     
-    # 设置手动窗口区域
+    # 检查是否手动指定窗口区域
     manual_window_region = None
     if args.manual_window and args.window_left is not None and args.window_top is not None and args.window_width is not None and args.window_height is not None:
         manual_window_region = (args.window_left, args.window_top, args.window_width, args.window_height)
-        print(f"Using manual window region: {manual_window_region}")
+        print(f"Using manually specified window region: {manual_window_region}")
+    elif args.window_region:
+        try:
+            # 解析"left,top,width,height"格式的字符串
+            coords = [int(x.strip()) for x in args.window_region.split(',')]
+            if len(coords) == 4:
+                manual_window_region = tuple(coords)
+                print(f"Using window region from string: {manual_window_region}")
+            else:
+                print(f"Error: Window region must have 4 values: left,top,width,height")
+        except ValueError:
+            print(f"Error parsing window region string. Format should be: left,top,width,height")
     
-    # 如果需要，启动Tetris游戏监控线程
+    # 启动游戏（除非指定不启动）
+    if not args.no_launch_game:
+        tetris_process = launch_tetris_game(not args.use_original_tetris)
+        if tetris_process is None:
+            print("Warning: Could not launch Tetris game automatically.")
+            print("Please start the game manually, or run again with the --no_launch_game option.")
+            # 继续运行 - 用户可能会手动启动游戏
+    
+    # 启动游戏监控线程（在后台运行以监控游戏状态）
     monitor_thread = None
     if not args.no_launch_game:
         monitor_thread = threading.Thread(
@@ -500,16 +549,16 @@ def main():
                 for future in futures:
                     future.cancel()
         
-            # 等待monitor_thread退出
-            if monitor_thread and monitor_thread.is_alive():
-                print("Waiting for monitor thread to exit...")
-                monitor_thread.join(timeout=5)
+        # 等待monitor_thread退出
+        if monitor_thread and monitor_thread.is_alive():
+            print("Waiting for monitor thread to exit...")
+            monitor_thread.join(timeout=5)
     
     except KeyboardInterrupt:
-            print("\nInterrupted by user, stopping all threads...")
-            stop_flag = True
-            # 确保游戏进程被停止
-            stop_tetris_game()
+        print("\nInterrupted by user, stopping all threads...")
+        stop_flag = True
+        # 确保游戏进程被停止
+        stop_tetris_game()
     
     except Exception as e:
         print(f"Error in main: {e}")
@@ -522,4 +571,4 @@ def main():
         print("Main thread exiting...")
 
 if __name__ == "__main__":
-    main()
+    main() 
