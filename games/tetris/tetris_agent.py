@@ -272,23 +272,26 @@ def key_listener():
     """
     启动一个键盘监听线程，监听'q'键来停止所有线程
     """
-    if not KEYBOARD_AVAILABLE:
-        print("Keyboard library not available, key listener not started")
-        return None
-        
-    print("Starting keyboard listener. Press 'q' to stop all threads.")
+    global stop_flag
     
+    if not KEYBOARD_AVAILABLE:
+        print("Keyboard library not available. Press Ctrl+C to stop.")
+        return
+        
     def on_q_pressed(e):
-        """按下q键时的回调函数"""
+        """当按下q键时停止所有线程"""
+        global stop_flag
         if e.name == 'q':
             print("'q' key pressed, stopping all threads...")
-            global stop_flag
             stop_flag = True
-            # 也停止游戏
+            # 停止游戏进程
             stop_tetris_game()
-            
-    # 注册按键监听
+            # 停止监听器
+            return False
+    
+    # 设置监听函数
     keyboard.on_press(on_q_pressed)
+    print("Starting keyboard listener. Press 'q' to stop all threads.")
 
 # 信号处理函数，用于处理Ctrl+C等信号
 def signal_handler(sig, frame):

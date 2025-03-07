@@ -757,6 +757,11 @@ def worker_tetris(
             # 正常执行其余代码行
             executed_actions = 0
             for line in code_lines:
+                # 定期检查停止标志
+                if should_stop():
+                    log_message("Stop flag detected during code execution. Stopping...")
+                    break
+                    
                 line = line.strip()
                 # 跳过空行和注释行(不含sleep标记的)
                 if not line or (line.startswith('#') and '# SLEEP:' not in line):
@@ -767,7 +772,19 @@ def worker_tetris(
                 if sleep_match:
                     sleep_time = float(sleep_match.group(1)) * time_factor
                     log_message(f"Waiting for {sleep_time:.1f}s...")
-                    time.sleep(sleep_time)
+                    
+                    # 分段睡眠，以便能够及时响应停止信号
+                    sleep_interval = 0.5  # 每0.5秒检查一次停止标志
+                    for _ in range(int(sleep_time / sleep_interval)):
+                        if should_stop():
+                            log_message("Stop flag detected during sleep. Stopping...")
+                            return time.time() - start_time  # 提前返回
+                        time.sleep(sleep_interval)
+                    
+                    # 处理可能的小数部分
+                    remainder = sleep_time % sleep_interval
+                    if remainder > 0 and not should_stop():
+                        time.sleep(remainder)
                     
                     # 等待后截图，确保游戏状态更新被捕获
                     try:
