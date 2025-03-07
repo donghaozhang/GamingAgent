@@ -28,6 +28,9 @@ def parse_custom_args(args):
     screenshot_interval = 5
     enhanced_logging = True
     save_all_states = True
+    plan_seconds = 60
+    execution_mode = 'adaptive'
+    piece_limit = 0
     
     # 需要移除的参数
     to_remove = []
@@ -45,6 +48,23 @@ def parse_custom_args(args):
         elif arg == "--no-save-all-states":
             save_all_states = False
             to_remove.append(arg)
+        elif arg.startswith("--plan-seconds="):
+            match = re.match(r"--plan-seconds=(\d+)", arg)
+            if match:
+                plan_seconds = int(match.group(1))
+            to_remove.append(arg)
+        elif arg.startswith("--execution-mode="):
+            match = re.match(r"--execution-mode=(\w+)", arg)
+            if match:
+                mode = match.group(1)
+                if mode in ['adaptive', 'fast', 'slow']:
+                    execution_mode = mode
+            to_remove.append(arg)
+        elif arg.startswith("--piece-limit="):
+            match = re.match(r"--piece-limit=(\d+)", arg)
+            if match:
+                piece_limit = int(match.group(1))
+            to_remove.append(arg)
     
     # 移除我们处理的参数
     filtered_args = [arg for arg in args if arg not in to_remove]
@@ -56,6 +76,12 @@ def parse_custom_args(args):
         filtered_args.append("--enhanced_logging")
     if save_all_states:
         filtered_args.append("--save_all_states")
+    
+    # 添加新的参数
+    filtered_args.append(f"--plan_seconds={plan_seconds}")
+    filtered_args.append(f"--execution_mode={execution_mode}")
+    if piece_limit > 0:
+        filtered_args.append(f"--piece_limit={piece_limit}")
     
     # 创建带有时间戳的日志文件夹名称
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

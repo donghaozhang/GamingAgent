@@ -202,7 +202,9 @@ def worker_tetris(
     log_file=None,      # 日志文件路径
     screenshot_interval=0,  # 截图间隔(秒)，0表示禁用
     save_all_states=False,  # 是否保存所有状态的截图
-    enhanced_logging=False  # 是否启用增强日志
+    enhanced_logging=False,  # 是否启用增强日志
+    execution_mode='adaptive',  # 控制执行模式：adaptive, fast, or slow
+    piece_limit=0  # 每次API调用最多控制的方块数量，0表示不限制
 ):
     """
     A single Tetris worker that plans moves for 'plan_seconds'.
@@ -232,6 +234,8 @@ def worker_tetris(
         screenshot_interval: 截图间隔(秒)，0表示禁用
         save_all_states: 是否保存所有状态的截图
         enhanced_logging: 是否启用增强日志
+        execution_mode: 控制执行模式 - adaptive (自适应), fast (快速), slow (慢速)
+        piece_limit: 每次API调用最多控制的方块数量，0表示不限制
     """
     all_response_time = []
     thread_responses = []
@@ -723,127 +727,240 @@ def worker_tetris(
                 print(f"[Thread {thread_id}] Stop flag detected before code execution. Exiting...")
                 break
             
-            # Extract Python code for execution
-            print(f"[Thread {thread_id}] Extracting Python code from response...")
-            clean_code = extract_python_code(generated_code_str)
-            print(f"[Thread {thread_id}] Python code to be executed:\n{clean_code}\n")
-
+            # 【步骤4：执行代码】尝试执行模型生成的代码
             try:
-                # 在执行代码前最后检查一次停止标志
-                if should_stop():
-                    print(f"[Thread {thread_id}] Stop flag detected before code execution. Exiting...")
-                    break
+                # Extract Python code for execution
+                print(f"[Thread {thread_id}] Extracting Python code from response...")
+                clean_code = extract_python_code(generated_code_str)
+                print(f"[Thread {thread_id}] Python code to be executed:\n{clean_code}\n")
                 
-                # 【步骤3：执行代码】尝试执行模型生成的代码
                 try:
-                    # 执行前先截一张图，记录代码执行前的状态
-                    try:
-                        if enhanced_logging or save_all_states:
-                            pre_exec_screenshot_path, pre_exec_screenshot = enhanced_screenshot(
-                                region, 
-                                suffix="_pre_exec",
-                                description="Pre-Execution"
-                            )
-                            log_message(f"Pre-execution screenshot saved to: {pre_exec_screenshot_path}")
-                        else:
-                            pre_exec_screenshot_path, pre_exec_screenshot = safe_screenshot(
-                                region, 
-                                thread_id=thread_id, 
-                                output_dir=output_dir,
-                                suffix="_pre_exec"
-                            )
-                            print(f"[Thread {thread_id}] Pre-execution screenshot saved to: {pre_exec_screenshot_path}")
-                    except Exception as e:
-                        print(f"[Thread {thread_id}] Error taking pre-execution screenshot: {e}")
-                    
-                    # 【步骤4：代码执行后】截取执行后的游戏状态
-                    try:
-                        if enhanced_logging or save_all_states:
-                            post_exec_screenshot_path, post_exec_screenshot = enhanced_screenshot(
-                                region, 
-                                suffix="_post_exec",
-                                description="Post-Execution"
-                            )
-                            log_message(f"Post-execution screenshot saved to: {post_exec_screenshot_path}")
-                        else:
-                            post_exec_screenshot_path, post_exec_screenshot = safe_screenshot(
-                                region, 
-                                thread_id=thread_id, 
-                                output_dir=output_dir,
-                                suffix="_post_exec"
-                            )
-                            print(f"[Thread {thread_id}] Post-execution screenshot saved to: {post_exec_screenshot_path}")
-                    except Exception as e:
-                        print(f"[Thread {thread_id}] Error taking post-execution screenshot: {e}")
-                    
-                    # 即使执行代码失败，也尝试截取一张错误状态截图
-                    try:
-                        if enhanced_logging or save_all_states:
-                            error_screenshot_path, error_screenshot = enhanced_screenshot(
-                                region, 
-                                suffix="_error",
-                                description="Error State"
-                            )
-                            log_message(f"Error state screenshot saved to: {error_screenshot_path}")
-                        else:
-                            error_screenshot_path, error_screenshot = safe_screenshot(
-                                region, 
-                                thread_id=thread_id, 
-                                output_dir=output_dir,
-                                suffix="_error"
-                            )
-                            print(f"[Thread {thread_id}] Error state screenshot saved to: {error_screenshot_path}")
-                    except Exception as e:
-                        print(f"[Thread {thread_id}] Error taking error screenshot: {e}")
-                    
-                    # 首先点击游戏窗口中心确保窗口激活
-                    if region:
-                        left, top, width, height = region
-                        try:
-                            pyautogui.click(left + width // 2, top + height // 2)
-                            time.sleep(0.2)  # 等待窗口激活
-                        except Exception as e:
-                            print(f"[Thread {thread_id}] Error activating window: {e}")
-                    
-                    # 检查代码是否是有效的Python代码
-                    # 如果模型没有返回可执行的Python代码，我们需要创建一个安全的替代代码
-                    try:
-                        # 尝试编译代码，看是否有语法错误
-                        compile(clean_code, '<string>', 'exec')
-                        # 如果没有语法错误，执行代码
-                        print(f"[Thread {thread_id}] Executing Python code...")
-                        exec(clean_code)
-                        print(f"[Thread {thread_id}] Code execution completed.")
-                    except SyntaxError:
-                        # 代码有语法错误，模型可能返回了纯文本回应
-                        print(f"[Thread {thread_id}] Syntax error in code. Using fallback random moves.")
-                        
-                        # 使用随机移动作为替代
-                        fallback_code = """
-                        # Fallback code: Random Tetris moves
-                        import pyautogui
-                        import time
-                        import random
-
-                        # Random actions
-                        possible_actions = ['left', 'right', 'up', 'space']
-                        actions_to_take = random.sample(possible_actions, k=min(3, len(possible_actions)))
-
-                        for action in actions_to_take:
-                            print(f"Pressing {action}")
-                            pyautogui.press(action)
-                            time.sleep(0.3)
-
-                        # Always try to drop at the end
-                        if 'space' not in actions_to_take:
-                            print("Dropping piece")
-                            pyautogui.press('space')
+                    # 检查是否需要启用紧急模式(新方块刚出现)
+                    def check_new_piece(screenshot_path):
                         """
-                        print(f"[Thread {thread_id}] Executing fallback code:")
-                        print(fallback_code)
-                        exec(fallback_code)
-                        print(f"[Thread {thread_id}] Fallback code execution completed.")
+                        检查是否有新方块刚出现在顶部
+                        """
+                        try:
+                            # 打开截图
+                            img = Image.open(screenshot_path)
+                            # 转换为numpy数组
+                            img_array = np.array(img)
+                            
+                            # 仅检查顶部区域的一小部分
+                            # 假设游戏区域顶部是新方块出现的地方
+                            # 取前2行(根据Tetris的特性，足够检测新方块出现)
+                            top_rows = 2
+                            game_area_start_x = img.width // 3  # 假设游戏区域在窗口左侧
+                            top_area = img_array[:top_rows, :game_area_start_x]
+                            
+                            # 检查是否有彩色像素(非黑色背景)
+                            # 简化检测：如果有足够多的像素亮度超过阈值，认为有新方块
+                            is_bright = np.mean(top_area) > 20  # 亮度阈值
+                            
+                            return is_bright
+                        except Exception as e:
+                            print(f"Error checking for new piece: {e}")
+                            return False
                     
+                    # 检查是否有新方块出现，如果有，使用紧急模式
+                    urgent_mode = check_new_piece(pre_exec_screenshot_path)
+                    if urgent_mode:
+                        print(f"[Thread {thread_id}] !!! URGENT MODE: New piece detected !!!")
+                    
+                    # 尝试编译代码，看是否有语法错误
+                    compile(clean_code, '<string>', 'exec')
+                    # 如果没有语法错误，执行代码
+                    print(f"[Thread {thread_id}] Executing Python code...")
+                    
+                    # 将代码中的time.sleep替换为同步游戏的等待
+                    # 首先，提取所有的time.sleep调用
+                    import re
+                    
+                    # 修改代码，替换time.sleep为特殊标记
+                    modified_code = re.sub(
+                        r'time\.sleep\(([0-9.]+)\)',
+                        r'# SLEEP: \1',
+                        clean_code
+                    )
+                    # 同样处理pyautogui.sleep
+                    modified_code = re.sub(
+                        r'pyautogui\.sleep\(([0-9.]+)\)',
+                        r'# SLEEP: \1',
+                        modified_code
+                    )
+                    
+                    # 分成多行
+                    code_lines = modified_code.splitlines()
+                    
+                    # 逐行执行代码，处理sleep语句
+                    local_vars = {}
+                    global_vars = {
+                        'pyautogui': pyautogui,
+                        'time': time,
+                        'random': __import__('random')
+                    }
+                    
+                    # 如果是紧急模式，提取并优先执行第一组移动命令
+                    urgent_commands = []
+                    if urgent_mode:
+                        # 查找前几个press指令
+                        for line in code_lines:
+                            line = line.strip()
+                            if 'press' in line and not line.startswith('#'):
+                                urgent_commands.append(line)
+                                # 只取前3个命令
+                                if len(urgent_commands) >= 3:
+                                    break
+                        
+                        if urgent_commands:
+                            print(f"[Thread {thread_id}] Executing urgent commands first: {urgent_commands}")
+                            # 执行紧急命令
+                            for cmd in urgent_commands:
+                                try:
+                                    # 查找按键名称
+                                    key_match = re.search(r'press\(["\']([^"\']+)["\']', cmd)
+                                    if key_match:
+                                        key_name = key_match.group(1)
+                                        print(f"[Thread {thread_id}] URGENT: Pressing key: {key_name}")
+                                        
+                                        # 执行按键
+                                        exec(cmd, global_vars, local_vars)
+                                        
+                                        # 按键后极短暂等待，紧急模式下需要快速操作
+                                        time.sleep(0.1)
+                                        
+                                        # 截图记录按键后的状态
+                                        try:
+                                            key_screenshot_path, key_screenshot = safe_screenshot(
+                                                region, 
+                                                thread_id=thread_id, 
+                                                output_dir=output_dir,
+                                                suffix=f"_urgent_key_{key_name}"
+                                            )
+                                            # 红色边框表示紧急
+                                            draw = ImageDraw.Draw(key_screenshot)
+                                            draw.rectangle([(0, 0), (key_screenshot.width-1, key_screenshot.height-1)], outline="red", width=2)
+                                            draw.text((5, 5), f"Urgent: {key_name}", fill="red")
+                                            key_screenshot.save(key_screenshot_path)
+                                        except Exception as e:
+                                            print(f"[Thread {thread_id}] Error taking urgent key screenshot: {e}")
+                                except Exception as e:
+                                    print(f"[Thread {thread_id}] Error executing urgent command: {cmd}")
+                                    print(f"[Thread {thread_id}] Error: {e}")
+                    
+                    # 计算每个动作的大约等待时间，让代码执行能填满大部分plan_seconds
+                    # 假设model回复已经使用了部分时间
+                    remaining_time = plan_seconds - latency
+                    # 以实际的操作数量为基准分配时间
+                    action_count = sum(1 for line in code_lines if 'press' in line and not line.startswith('#'))
+                    # 加上sleep指令的时间
+                    sleep_time_sum = 0
+                    for line in code_lines:
+                        sleep_match = re.search(r'# SLEEP: ([0-9.]+)', line)
+                        if sleep_match:
+                            sleep_time_sum += float(sleep_match.group(1))
+                    
+                    # 计算基本动作时间，确保总执行时间能填满大部分plan_seconds
+                    # 但留出一些余量给下一次API调用
+                    target_time = max(remaining_time * 0.85, 5.0)  # 至少给5秒执行时间
+                    actual_time = sleep_time_sum + action_count * 0.3  # 预估的执行时间
+                    
+                    # 调整action_timeout，确保代码有足够时间执行
+                    action_timeout = target_time / action_count if action_count > 0 else 0.3
+                    action_timeout = min(max(action_timeout, 0.2), 1.0)  # 范围限制在0.2-1.0秒之间
+                    
+                    if enhanced_logging:
+                        log_message(f"Adjusting action timing - actions: {action_count}, sleep time: {sleep_time_sum:.1f}s, target time: {target_time:.1f}s")
+                        log_message(f"Action timeout: {action_timeout:.2f}s per key press")
+                    
+                    # 正常执行其余代码行
+                    executed_actions = 0
+                    for line in code_lines:
+                        line = line.strip()
+                        # 跳过空行和注释行(不含sleep标记的)
+                        if not line or (line.startswith('#') and '# SLEEP:' not in line):
+                            continue
+                            
+                        # 处理sleep指令
+                        sleep_match = re.search(r'# SLEEP: ([0-9.]+)', line)
+                        if sleep_match:
+                            sleep_time = float(sleep_match.group(1))
+                            print(f"[Thread {thread_id}] Waiting for {sleep_time:.1f}s...")
+                            time.sleep(sleep_time)
+                            
+                            # 等待后截图，确保游戏状态更新被捕获
+                            try:
+                                wait_screenshot_path, wait_screenshot = safe_screenshot(
+                                    region, 
+                                    thread_id=thread_id, 
+                                    output_dir=output_dir,
+                                    suffix=f"_wait_{sleep_time:.1f}s"
+                                )
+                                # 绿色表示等待
+                                draw = ImageDraw.Draw(wait_screenshot)
+                                draw.rectangle([(0, 0), (wait_screenshot.width-1, wait_screenshot.height-1)], outline="green", width=1)
+                                draw.text((5, 5), f"Wait: {sleep_time:.1f}s", fill="green")
+                                wait_screenshot.save(wait_screenshot_path)
+                            except Exception as e:
+                                print(f"[Thread {thread_id}] Error taking wait screenshot: {e}")
+                        # 处理按键命令
+                        elif 'press' in line and not line.startswith('#'):
+                            try:
+                                # 查找按键名称
+                                key_match = re.search(r'press\(["\']([^"\']+)["\']', line)
+                                if key_match:
+                                    key_name = key_match.group(1)
+                                    print(f"[Thread {thread_id}] Pressing key: {key_name}")
+                                    
+                                    # 执行按键
+                                    exec(line, global_vars, local_vars)
+                                    executed_actions += 1
+                                    
+                                    # 按键后等待，让游戏有时间响应，使用动态计算的等待时间
+                                    # 给不同的按键应用不同的等待时间，使得整体执行时间更适应游戏速度
+                                    if key_name in ['space']:  # 对于空格键（落下），等待时间更长
+                                        wait_time = 1.0
+                                    else:
+                                        wait_time = action_timeout
+                                    
+                                    time.sleep(wait_time)
+                                    
+                                    # 截图记录按键后的状态
+                                    try:
+                                        key_screenshot_path, key_screenshot = safe_screenshot(
+                                            region, 
+                                            thread_id=thread_id, 
+                                            output_dir=output_dir,
+                                            suffix=f"_key_{key_name}"
+                                        )
+                                        # 简单标记
+                                        draw = ImageDraw.Draw(key_screenshot)
+                                        draw.rectangle([(0, 0), (key_screenshot.width-1, key_screenshot.height-1)], outline="cyan", width=1)
+                                        draw.text((5, 5), f"Key: {key_name}", fill="cyan")
+                                        key_screenshot.save(key_screenshot_path)
+                                    except Exception as e:
+                                        print(f"[Thread {thread_id}] Error taking key screenshot: {e}")
+                                else:
+                                    # 普通执行
+                                    exec(line, global_vars, local_vars)
+                            except Exception as e:
+                                print(f"[Thread {thread_id}] Error executing line: {line}")
+                                print(f"[Thread {thread_id}] Error: {e}")
+                        else:
+                            # 普通执行其他代码行
+                            try:
+                                exec(line, global_vars, local_vars)
+                            except Exception as e:
+                                print(f"[Thread {thread_id}] Error executing line: {line}")
+                                print(f"[Thread {thread_id}] Error: {e}")
+                    
+                    # 代码执行后，等待一小段时间让游戏状态稳定下来
+                    if executed_actions > 0:
+                        stabilize_time = min(2.0, executed_actions * 0.2)
+                        print(f"[Thread {thread_id}] Stabilizing game state for {stabilize_time:.1f}s...")
+                        time.sleep(stabilize_time)
+                    
+                    print(f"[Thread {thread_id}] Code execution completed.")
                 except Exception as e:
                     print(f"[Thread {thread_id}] Error executing code: {e}")
                     import traceback

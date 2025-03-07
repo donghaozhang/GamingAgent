@@ -248,16 +248,20 @@ This enhanced version provides:
 - Screenshots saved in organized folders with timestamps and descriptions
 - All game states screenshots preserved for analysis
 - Complete model responses saved to text files for review
+- Adaptive control timing to allow controlling multiple pieces per API call
 
 You can customize these features with additional parameters:
 ```
-python run_tetris_enhanced.py --screenshot-interval=10 --no-enhanced-logging
+python run_tetris_enhanced.py --screenshot-interval=10 --no-enhanced-logging --plan-seconds=90 --execution-mode=slow
 ```
 
 Parameters include:
 - `--screenshot-interval=N`: Take screenshots every N seconds (default: 5)
 - `--no-enhanced-logging`: Disable enhanced logging
 - `--no-save-all-states`: Don't save screenshots for all game states
+- `--plan-seconds=N`: Set planning cycle time in seconds (default: 60)
+- `--execution-mode=MODE`: Set execution mode (adaptive, fast, slow)
+- `--piece-limit=N`: Limit pieces controlled per API call (0 = unlimited)
 
 All logs and screenshots are saved in a timestamped folder under `game_logs/session_YYYYMMDD_HHMMSS/` for easy reference. Model responses are saved in `thread_X_responses/` subfolders.
 

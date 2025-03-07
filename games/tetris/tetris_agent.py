@@ -342,7 +342,11 @@ def main():
     parser.add_argument('--api_provider', default='anthropic', choices=['anthropic', 'openai', 'gemini'], help='API provider to use')
     parser.add_argument('--min_threads', default=1, type=int, help='Minimum number of threads to use')
     parser.add_argument('--max_threads', default=1, type=int, help='Maximum number of threads to use')
-    parser.add_argument('--plan_seconds', default=30, type=int, help='Seconds between planning cycles')
+    parser.add_argument('--plan_seconds', default=60, type=int, help='Seconds between planning cycles (default: 60)')
+    parser.add_argument('--execution_mode', default='adaptive', choices=['adaptive', 'fast', 'slow'], 
+                        help='Control how fast commands are executed: adaptive (adjust to game), fast (quick execution), slow (more deliberate)')
+    parser.add_argument('--piece_limit', default=0, type=int, 
+                        help='Maximum number of pieces to control per API call (0 for unlimited)')
     parser.add_argument('--thread_policy', default='fixed', choices=['fixed', 'dynamic'], help='Thread management policy')
     parser.add_argument('--verbose_output', action='store_true', help='Display verbose output')
     parser.add_argument('--save_responses', action='store_true', help='Save AI responses to files')
@@ -355,6 +359,7 @@ def main():
     parser.add_argument('--debug_pause', action='store_true', help='Pause for debugging between actions')
     parser.add_argument('--no_launch_game', action='store_true', help='Do not launch the Tetris game')
     parser.add_argument('--use_original_tetris', action='store_true', help='Use original Tetris instead of simplified version')
+    parser.add_argument('--window_region', help='Window region in the format "left,top,width,height"')
     parser.add_argument('--screenshot_interval', default=0, type=int, help='Take additional screenshots every N seconds (0 to disable)')
     parser.add_argument('--enhanced_logging', action='store_true', help='Enable enhanced logging with timestamps')
     parser.add_argument('--save_all_states', action='store_true', help='Save screenshots for all game states')
@@ -429,7 +434,7 @@ def main():
                     worker_tetris,
                     i,
                     i % 10 * 100,  # 偏移量
-                    "You are a helpful assistant that plays Tetris. When asked to help the player, you should analyze the visible game state from the image, identify the current and next piece, and suggest the best move considering piece placement, line clearing, and maintaining a good board structure. Explain your reasoning based on Tetris strategy principles.",
+                    "You are a helpful assistant that plays Tetris. When asked to help the player, you should analyze the visible game state from the image, identify the current and next piece, and suggest the best move considering piece placement, line clearing, and maintaining a good board structure. Explain your reasoning based on Tetris strategy principles. You need to plan for multiple pieces, not just the current one. Make sure to include detailed timing with pyautogui.sleep() commands between actions to ensure the game has time to respond.",
                     args.api_provider,
                     args.model_name,
                     args.plan_seconds,
@@ -445,7 +450,9 @@ def main():
                     log_file=log_file,
                     screenshot_interval=args.screenshot_interval,
                     save_all_states=args.save_all_states,
-                    enhanced_logging=args.enhanced_logging
+                    enhanced_logging=args.enhanced_logging,
+                    execution_mode=args.execution_mode,
+                    piece_limit=args.piece_limit
                 )
                 futures.append(future)
             
@@ -466,7 +473,7 @@ def main():
                         worker_tetris,
                         new_thread_id,
                         new_thread_id % 10 * 100,  # 偏移量
-                        "You are a helpful assistant that plays Tetris. When asked to help the player, you should analyze the visible game state from the image, identify the current and next piece, and suggest the best move considering piece placement, line clearing, and maintaining a good board structure. Explain your reasoning based on Tetris strategy principles.",
+                        "You are a helpful assistant that plays Tetris. When asked to help the player, you should analyze the visible game state from the image, identify the current and next piece, and suggest the best move considering piece placement, line clearing, and maintaining a good board structure. Explain your reasoning based on Tetris strategy principles. You need to plan for multiple pieces, not just the current one. Make sure to include detailed timing with pyautogui.sleep() commands between actions to ensure the game has time to respond.",
                         args.api_provider,
                         args.model_name,
                         args.plan_seconds,
@@ -482,7 +489,9 @@ def main():
                         log_file=log_file,
                         screenshot_interval=args.screenshot_interval,
                         save_all_states=args.save_all_states,
-                        enhanced_logging=args.enhanced_logging
+                        enhanced_logging=args.enhanced_logging,
+                        execution_mode=args.execution_mode,
+                        piece_limit=args.piece_limit
                     )
                     futures.append(future)
             
