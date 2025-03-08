@@ -29,6 +29,7 @@ import re
 import io
 import traceback
 import tempfile
+import argparse
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 import pyautogui
@@ -678,9 +679,13 @@ Here's the current Tetris game state image:
         with tempfile.NamedTemporaryFile(suffix='.py', delete=False, mode='w') as f:
             temp_filename = f.name
             
-            # Add helper functions for simulated Tetris
+            # Add imports and helper code for simulated Tetris
             if self.simulated_mode:
-                f.write("""
+                helpers_code = """
+import pyautogui as pyautogui_real
+import time
+import random
+
 # Helper functions for simulated Tetris
 def get_current_piece():
     return iterator.current_piece.copy() if iterator.current_piece else None
@@ -700,9 +705,107 @@ def lock_piece(piece):
 def clear_lines():
     return iterator.clear_lines()
 
-""")
+# Simulated pyautogui for Tetris moves
+class SimulatedPyAutoGUI:
+    def __init__(self, iterator):
+        self.iterator = iterator
+    
+    def press(self, key):
+        \"\"\"Simulate pressing a key\"\"\"
+        # Only process if we have a current piece
+        if not self.iterator.current_piece:
+            return
+            
+        # Clone the current piece for simulation
+        piece = self.iterator.current_piece.copy()
+        
+        # Handle key press
+        if key == "left":
+            # Move left
+            piece['x'] -= 1
+            # Check if valid
+            if not self.iterator.is_valid_position(piece):
+                piece['x'] += 1  # Undo if invalid
+            else:
+                self.iterator.current_piece = piece
+                
+        elif key == "right":
+            # Move right
+            piece['x'] += 1
+            # Check if valid
+            if not self.iterator.is_valid_position(piece):
+                piece['x'] -= 1  # Undo if invalid
+            else:
+                self.iterator.current_piece = piece
+                
+        elif key == "up" or key == "rotate":
+            # Rotate piece (clockwise)
+            original_rot = piece['rotation']
+            piece['rotation'] = (piece['rotation'] + 1) % 4
+            
+            # Check if valid
+            if not self.iterator.is_valid_position(piece):
+                # Try wall kicks (move left/right if rotation causes collision)
+                # First try moving right
+                piece['x'] += 1
+                if not self.iterator.is_valid_position(piece):
+                    # If right doesn't work, try left
+                    piece['x'] -= 2
+                    if not self.iterator.is_valid_position(piece):
+                        # If left doesn't work either, undo rotation
+                        piece['x'] += 1  # Reset to original position
+                        piece['rotation'] = original_rot
+            
+            # Update piece
+            self.iterator.current_piece = piece
+                
+        elif key == "down":
+            # Move down
+            piece['y'] += 1
+            # Check if valid
+            if not self.iterator.is_valid_position(piece):
+                piece['y'] -= 1  # Undo if invalid
+            else:
+                self.iterator.current_piece = piece
+                
+        elif key == "space":
+            # Hard drop - move down until collision
+            while self.iterator.is_valid_position(piece):
+                piece['y'] += 1
+            
+            # Move back up one step
+            piece['y'] -= 1
+            
+            # Lock the piece on the board
+            self.iterator.lock_piece(piece)
+            
+            # Clear any completed lines
+            self.iterator.clear_lines()
+            
+            # Generate a new piece
+            piece_types = ['I', 'J', 'L', 'O', 'S', 'T', 'Z']
+            self.iterator.current_piece = {
+                'type': self.iterator.next_piece['type'] if self.iterator.next_piece else random.choice(piece_types),
+                'x': 4,
+                'y': 0,
+                'rotation': 0
+            }
+            self.iterator.next_piece = {'type': random.choice(piece_types)}
+            
+    def sleep(self, seconds):
+        \"\"\"Simulate waiting\"\"\"
+        pass
+
+# Use simulated or real pyautogui based on mode
+pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautogui_real
+"""
+                f.write(helpers_code)
+            else:
+                # For real Tetris, just import pyautogui normally
+                f.write("import pyautogui\nimport time\n")
             
             # Add the extracted code
+            f.write("\n# Claude's code begins here:\n")
             f.write(code)
         
         # Execute the code
@@ -714,7 +817,7 @@ def clear_lines():
                 code_content = f.read()
                 
             try:
-                # Create local namespace with self as iterator
+                # Create namespace with iterator
                 local_namespace = {"iterator": self}
                 
                 # Execute the code
