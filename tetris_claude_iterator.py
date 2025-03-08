@@ -133,30 +133,50 @@ class TetrisClaudeIterator:
         # Load prompt templates
         self.system_prompt = """You are a Tetris game-playing AI assistant. Your job is to analyze the given Tetris game state image and provide the best possible move using PyAutoGUI commands."""
         
-        self.instruction_prompt = """Analyze this Tetris game board and recommend the optimal next move(s).
-I'm using a simulated Tetris environment that can be controlled with PyAutoGUI commands:
+#         self.instruction_prompt = """Analyze this Tetris game board and recommend the optimal next move(s).
+# I'm using a simulated Tetris environment that can be controlled with PyAutoGUI commands:
 
-### Available commands:
-- pyautogui.press("left"): move piece left
-- pyautogui.press("right"): move piece right
-- pyautogui.press("up"): rotate piece clockwise
-- pyautogui.press("down"): move piece down
-- space: drop piece immediately
+# ### Available commands:
+# - pyautogui.press("left"): move piece left
+# - pyautogui.press("right"): move piece right
+# - pyautogui.press("up"): rotate piece clockwise
+# - pyautogui.press("down"): move piece down
+# - space: drop piece immediately
 
-### Strategies and Caveats:
-0. Clear the horizontal rows as soon as possible.
-1. If you see a chance to clear lines, do it
-2. Prioritize keeping the stack flat and balanced
-3. Avoid creating holes 
-4. Only control the current piece visible at the top
+# ### Strategies and Caveats:
+# 0. Clear the horizontal rows as soon as possible.
+# 1. If you see a chance to clear lines, do it
+# 2. Prioritize keeping the stack flat and balanced
+# 3. Avoid creating holes 
+# 4. Only control the current piece visible at the top
 
-### Output Format:
-- Output ONLY the Python code for PyAutoGUI commands, e.g. `pyautogui.press("left")`
-- Include brief comments for each action
-- Do not print anything else besides these Python commands
+# ### Output Format:
+# - Output ONLY the Python code for PyAutoGUI commands, e.g. `pyautogui.press("left")`
+# - Include brief comments for each action
+# - Do not print anything else besides these Python commands
 
-Here's the current Tetris game state image:"""
+# Here's the current Tetris game state image:"""
+        self.instruction_prompt = """Analyze this Tetris game board and recommend the optimal next move(s) using advanced techniques.
+I'm using a simulated Tetris environment controlled with PyAutoGUI:
 
+### Core Objectives (Prioritized):
+1. [LINE CLEAR] Actively build toward Tetris (4-line clears) by maintaining a 9-block-wide well on the right
+2. [EFFICIENCY] Maximize T-Spin potential by creating overhang shapes (T, J, L blocks)
+3. [RISK MITIGATION] Keep stack height difference between columns ≤3 blocks
+4. [ADAPTIVE] When >12 lines cleared, switch to combo-focused stacking patterns
+
+### Advanced Tactics:
+- Use "soft drop stitching" (partial drops) for precise positioning
+- Prepare multiple line-clear options per piece
+- Leverhold Z/S blocks for sidewell construction
+- Always leave mid-column openings for I-block bailouts
+
+# ### Output Format:
+# - Output ONLY the Python code for PyAutoGUI commands, e.g. `pyautogui.press("left")`
+# - Include brief comments for each action
+# - Do not print anything else besides these Python commands
+
+Current board state (visualized in text):"""
         # Initialize the simulated board
         if self.simulated_mode:
             self.create_simple_tetris_board()
