@@ -60,3 +60,8 @@ desktop.ini
 *.png
 game_logs
 claude_tetris_outputs
+*.gif
+*.mp4
+*.avi
+*.mov
+*.webm

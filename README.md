@@ -265,6 +265,42 @@ Parameters include:
 
 All logs and screenshots are saved in a timestamped folder under `game_logs/session_YYYYMMDD_HHMMSS/` for easy reference. Model responses are saved in `thread_X_responses/` subfolders.
 
+#### Tetris Claude Iterator
+
+For a more direct approach to Tetris AI gameplay, we also provide the `tetris_claude_iterator.py` script which allows Claude to play Tetris by directly analyzing screenshots and controlling the game:
+
+```
+python tetris_claude_iterator.py
+```
+
+This script offers several powerful features:
+
+- **Auto-Space Feature**: Automatically continues for a set number of iterations before requiring manual input
+  ```
+  python tetris_claude_iterator.py --auto-iterations=10  # Run 10 iterations automatically
+  python tetris_claude_iterator.py --auto-iterations=0   # Disable auto-space (manual mode)
+  ```
+
+- **Simulated Mode**: Creates a virtual Tetris board when a real window isn't available
+  ```
+  python tetris_claude_iterator.py --force-simulate  # Force simulated Tetris mode
+  python tetris_claude_iterator.py --no-simulate     # Force real screenshots mode
+  ```
+
+- **Single-shot Analysis**: Analyze a specific Tetris screenshot without running the full loop
+  ```
+  python tetris_claude_iterator.py --image=path/to/tetris_screenshot.png
+  ```
+
+- **Intelligent Window Detection**: Automatically switches to simulated mode if no valid Tetris window is found, preventing capture of irrelevant windows
+
+- **API Model Selection**: Choose which Claude model to use for gameplay analysis
+  ```
+  python tetris_claude_iterator.py --model=claude-3-5-sonnet-20241022
+  ```
+
+The script creates detailed logs and screenshots in a timestamped directory, allowing you to analyze Claude's gameplay decisions. Simulated mode provides a safe environment for testing without needing an actual Tetris game running.
+
 #### Other command options
 ```
 --api_provider: API provider to use.

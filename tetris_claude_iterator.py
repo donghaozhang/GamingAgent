@@ -710,87 +710,89 @@ class SimulatedPyAutoGUI:
     def __init__(self, iterator):
         self.iterator = iterator
     
-    def press(self, key):
-        \"\"\"Simulate pressing a key\"\"\"
+    def press(self, key, presses=1):
+        \"\"\"Simulate pressing a key, possibly multiple times\"\"\"
         # Only process if we have a current piece
         if not self.iterator.current_piece:
             return
-            
-        # Clone the current piece for simulation
-        piece = self.iterator.current_piece.copy()
         
-        # Handle key press
-        if key == "left":
-            # Move left
-            piece['x'] -= 1
-            # Check if valid
-            if not self.iterator.is_valid_position(piece):
-                piece['x'] += 1  # Undo if invalid
-            else:
-                self.iterator.current_piece = piece
-                
-        elif key == "right":
-            # Move right
-            piece['x'] += 1
-            # Check if valid
-            if not self.iterator.is_valid_position(piece):
-                piece['x'] -= 1  # Undo if invalid
-            else:
-                self.iterator.current_piece = piece
-                
-        elif key == "up" or key == "rotate":
-            # Rotate piece (clockwise)
-            original_rot = piece['rotation']
-            piece['rotation'] = (piece['rotation'] + 1) % 4
+        # Execute the press the specified number of times
+        for _ in range(presses):
+            # Clone the current piece for simulation
+            piece = self.iterator.current_piece.copy()
             
-            # Check if valid
-            if not self.iterator.is_valid_position(piece):
-                # Try wall kicks (move left/right if rotation causes collision)
-                # First try moving right
-                piece['x'] += 1
+            # Handle key press
+            if key == "left":
+                # Move left
+                piece['x'] -= 1
+                # Check if valid
                 if not self.iterator.is_valid_position(piece):
-                    # If right doesn't work, try left
-                    piece['x'] -= 2
+                    piece['x'] += 1  # Undo if invalid
+                else:
+                    self.iterator.current_piece = piece
+                    
+            elif key == "right":
+                # Move right
+                piece['x'] += 1
+                # Check if valid
+                if not self.iterator.is_valid_position(piece):
+                    piece['x'] -= 1  # Undo if invalid
+                else:
+                    self.iterator.current_piece = piece
+                    
+            elif key == "up" or key == "rotate":
+                # Rotate piece (clockwise)
+                original_rot = piece['rotation']
+                piece['rotation'] = (piece['rotation'] + 1) % 4
+                
+                # Check if valid
+                if not self.iterator.is_valid_position(piece):
+                    # Try wall kicks (move left/right if rotation causes collision)
+                    # First try moving right
+                    piece['x'] += 1
                     if not self.iterator.is_valid_position(piece):
-                        # If left doesn't work either, undo rotation
-                        piece['x'] += 1  # Reset to original position
-                        piece['rotation'] = original_rot
-            
-            # Update piece
-            self.iterator.current_piece = piece
+                        # If right doesn't work, try left
+                        piece['x'] -= 2
+                        if not self.iterator.is_valid_position(piece):
+                            # If left doesn't work either, undo rotation
+                            piece['x'] += 1  # Reset to original position
+                            piece['rotation'] = original_rot
                 
-        elif key == "down":
-            # Move down
-            piece['y'] += 1
-            # Check if valid
-            if not self.iterator.is_valid_position(piece):
-                piece['y'] -= 1  # Undo if invalid
-            else:
+                # Update piece
                 self.iterator.current_piece = piece
-                
-        elif key == "space":
-            # Hard drop - move down until collision
-            while self.iterator.is_valid_position(piece):
+                    
+            elif key == "down":
+                # Move down
                 piece['y'] += 1
-            
-            # Move back up one step
-            piece['y'] -= 1
-            
-            # Lock the piece on the board
-            self.iterator.lock_piece(piece)
-            
-            # Clear any completed lines
-            self.iterator.clear_lines()
-            
-            # Generate a new piece
-            piece_types = ['I', 'J', 'L', 'O', 'S', 'T', 'Z']
-            self.iterator.current_piece = {
-                'type': self.iterator.next_piece['type'] if self.iterator.next_piece else random.choice(piece_types),
-                'x': 4,
-                'y': 0,
-                'rotation': 0
-            }
-            self.iterator.next_piece = {'type': random.choice(piece_types)}
+                # Check if valid
+                if not self.iterator.is_valid_position(piece):
+                    piece['y'] -= 1  # Undo if invalid
+                else:
+                    self.iterator.current_piece = piece
+                    
+            elif key == "space":
+                # Hard drop - move down until collision
+                while self.iterator.is_valid_position(piece):
+                    piece['y'] += 1
+                
+                # Move back up one step
+                piece['y'] -= 1
+                
+                # Lock the piece on the board
+                self.iterator.lock_piece(piece)
+                
+                # Clear any completed lines
+                self.iterator.clear_lines()
+                
+                # Generate a new piece
+                piece_types = ['I', 'J', 'L', 'O', 'S', 'T', 'Z']
+                self.iterator.current_piece = {
+                    'type': self.iterator.next_piece['type'] if self.iterator.next_piece else random.choice(piece_types),
+                    'x': 4,
+                    'y': 0,
+                    'rotation': 0
+                }
+                self.iterator.next_piece = {'type': random.choice(piece_types)}
             
     def sleep(self, seconds):
         \"\"\"Simulate waiting\"\"\"
@@ -802,7 +804,7 @@ pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautog
                 f.write(helpers_code)
             else:
                 # For real Tetris, just import pyautogui normally
-                f.write("import pyautogui\nimport time\n")
+                f.write("import pyautogui\nimport time\nimport random\n")
             
             # Add the extracted code
             f.write("\n# Claude's code begins here:\n")
@@ -817,11 +819,12 @@ pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautog
                 code_content = f.read()
                 
             try:
-                # Create namespace with iterator
+                # Create namespace with iterator and import the local random module
+                global_namespace = {'__builtins__': __builtins__, 'random': __import__('random')}
                 local_namespace = {"iterator": self}
                 
                 # Execute the code
-                exec(code_content, {}, local_namespace)
+                exec(code_content, global_namespace, local_namespace)
                 
             except Exception as e:
                 error = str(e)
@@ -965,6 +968,11 @@ pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautog
         self.log_message("=== Starting Tetris Claude Iterator ===")
         self.log_message(f"Output directory: {self.session_dir}")
         
+        # Ensure we have a simulated board if in simulated mode
+        if self.simulated_mode and self.simulated_board is None:
+            self.log_message("Creating initial simulated Tetris board...")
+            self.create_simple_tetris_board()
+        
         # Show startup message based on auto-iterations setting
         if self.max_auto_spaces > 0:
             self.log_message(f"Auto-space enabled for {self.max_auto_spaces} iterations. Starting automatically...")
@@ -985,7 +993,8 @@ pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautog
                     # Capture screenshot
                     screenshot = self.capture_screenshot()
                     if screenshot is None:
-                        self.log_message("Failed to capture screenshot. Retrying...")
+                        self.log_message("Failed to capture screenshot. Retrying in 3 seconds...")
+                        time.sleep(3)
                         continue
                     
                     # Call Claude API
@@ -999,7 +1008,17 @@ pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautog
                     
                     # Extract and execute code
                     code = self.extract_python_code(response)
-                    self.execute_code(code)
+                    error = self.execute_code(code)
+                    
+                    # If there was an error and we're in real mode, try switching to simulated mode
+                    if error and not self.simulated_mode:
+                        self.log_message("Error in real mode. Would you like to switch to simulated mode? (y/n)")
+                        # Simple input without using pynput
+                        user_input = input().strip().lower()
+                        if user_input == 'y':
+                            self.log_message("Switching to simulated mode...")
+                            self.simulated_mode = True
+                            self.create_simple_tetris_board()
                     
                     # Wait for space key
                     self.log_message("Waiting for space key to continue...")
