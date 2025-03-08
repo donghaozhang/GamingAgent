@@ -43,7 +43,7 @@ except ImportError:
     load_dotenv = None
 
 # Default values (can be overridden by .env or command-line args)
-MODEL = os.environ.get('CLAUDE_MODEL', 'claude-3-opus-20240229')
+MODEL = os.environ.get('CLAUDE_MODEL', 'claude-3-7-sonnet-20250219')
 OUTPUT_DIR = os.environ.get('OUTPUT_DIR', '.')
 TETRIS_WINDOW_TITLE = os.environ.get('TETRIS_WINDOW_TITLE', None)
 
@@ -81,7 +81,7 @@ load_env_file()
 class TetrisClaudeIterator:
     def __init__(self, model=None, output_dir=None, window_title=None, save_responses=False):
         # Initialize Claude API
-        self.model = model or "claude-3-opus-20240229"
+        self.model = model or "claude-3-7-sonnet-20250219"
         
         # Set up logging and directories
         timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -201,17 +201,73 @@ Here's the current Tetris game state image:
             self.window_rect = (0, 0, 768, 1080)  # Default to left side of screen
 
     def create_simulated_tetris_board(self, board_state=None, current_piece=None, next_piece=None):
-        """
-        Create a simulated Tetris board image
+        """Create a simulated Tetris board as an image for visualization"""
+        # Define dimensions and colors
+        cell_size = 30
+        board_width = 10
+        board_height = 20
+        sidebar_width = 200
         
-        Args:
-            board_state: 2D list representing the board state (0=empty, 1-7=piece colors)
-            current_piece: Dict with 'type', 'x', 'y', 'rotation'
-            next_piece: Dict with 'type'
-            
-        Returns:
-            PIL.Image: Simulated Tetris board image
-        """
+        # Define vibrant colors for pieces (improved color scheme)
+        colors = {
+            0: (0, 0, 0),       # Background (black)
+            1: (0, 255, 255),    # I-piece (cyan)
+            2: (0, 0, 255),      # J-piece (blue)
+            3: (255, 165, 0),    # L-piece (orange)
+            4: (255, 255, 0),    # O-piece (yellow)
+            5: (0, 255, 0),      # S-piece (green)
+            6: (128, 0, 128),    # T-piece (purple)
+            7: (255, 0, 0)       # Z-piece (red)
+        }
+        
+        # Define piece shapes for all rotations
+        piece_shapes = {
+            'I': [
+                [(0, 0), (0, 1), (0, 2), (0, 3)],     # Horizontal
+                [(0, 0), (1, 0), (2, 0), (3, 0)]      # Vertical
+            ],
+            'J': [
+                [(0, 0), (1, 0), (1, 1), (1, 2)],     # ┌
+                [(0, 0), (0, 1), (1, 0), (2, 0)],     # ┘
+                [(0, 0), (0, 1), (0, 2), (1, 2)],     # └
+                [(0, 1), (1, 1), (2, 1), (2, 0)]      # ┐
+            ],
+            'L': [
+                [(0, 2), (1, 0), (1, 1), (1, 2)],     # ┐
+                [(0, 0), (1, 0), (2, 0), (2, 1)],     # └
+                [(0, 0), (0, 1), (0, 2), (1, 0)],     # ┌
+                [(0, 0), (0, 1), (1, 1), (2, 1)]      # ┘
+            ],
+            'O': [
+                [(0, 0), (0, 1), (1, 0), (1, 1)]      # Square (single rotation)
+            ],
+            'S': [
+                [(0, 1), (0, 2), (1, 0), (1, 1)],     # Horizontal
+                [(0, 0), (1, 0), (1, 1), (2, 1)]      # Vertical
+            ],
+            'T': [
+                [(0, 1), (1, 0), (1, 1), (1, 2)],     # ┬
+                [(0, 0), (1, 0), (1, 1), (2, 0)],     # ├
+                [(0, 0), (0, 1), (0, 2), (1, 1)],     # ┴
+                [(0, 1), (1, 0), (1, 1), (2, 1)]      # ┤
+            ],
+            'Z': [
+                [(0, 0), (0, 1), (1, 1), (1, 2)],     # Horizontal
+                [(0, 1), (1, 0), (1, 1), (2, 0)]      # Vertical
+            ]
+        }
+        
+        # Map piece type to color index
+        piece_colors = {
+            'I': 1,  # cyan
+            'J': 2,  # blue
+            'L': 3,  # orange
+            'O': 4,  # yellow
+            'S': 5,  # green
+            'T': 6,  # purple
+            'Z': 7   # red
+        }
+        
         # Store the board state and pieces for later use
         if board_state is not None:
             self.board = board_state
@@ -219,194 +275,175 @@ Here's the current Tetris game state image:
             self.current_piece = current_piece
         if next_piece is not None:
             self.next_piece = next_piece
-            
+        
         # If any are still None, initialize with defaults
         if self.board is None:
             self.board = [[0 for _ in range(10)] for _ in range(20)]
         if self.current_piece is None:
             self.current_piece = {
-                'type': 'T',
-                'x': 4,
-                'y': 0,
+                'type': 'T', 
+                'x': 4, 
+                'y': 0, 
                 'rotation': 0
             }
         if self.next_piece is None:
             self.next_piece = {'type': 'I'}
-            
-        # Define colors for Tetris pieces
-        colors = {
-            0: (0, 0, 0),         # Empty (black)
-            1: (0, 240, 240),     # I - Cyan
-            2: (0, 0, 240),       # J - Blue
-            3: (240, 160, 0),     # L - Orange
-            4: (240, 240, 0),     # O - Yellow
-            5: (0, 240, 0),       # S - Green
-            6: (160, 0, 240),     # T - Purple
-            7: (240, 0, 0),       # Z - Red
-            8: (100, 100, 100),   # Ghost piece (gray)
-            9: (50, 50, 50)       # Grid line (dark gray)
-        }
         
-        # Tetris piece shapes (different rotations)
-        piece_shapes = {
-            'I': [
-                [(0, 0), (1, 0), (2, 0), (3, 0)],  # Horizontal
-                [(1, -1), (1, 0), (1, 1), (1, 2)]  # Vertical
-            ],
-            'J': [
-                [(0, 0), (0, 1), (1, 1), (2, 1)],  # ┌──
-                [(1, 0), (2, 0), (1, 1), (1, 2)],  # │└─
-                [(0, 1), (1, 1), (2, 1), (2, 2)],  # ──┘
-                [(1, 0), (1, 1), (1, 2), (0, 2)]   # ─┐
-            ],                                       # └┘
-            'L': [
-                [(0, 1), (1, 1), (2, 1), (2, 0)],  # ──┐
-                [(1, 0), (1, 1), (1, 2), (2, 2)],  # └─┘
-                [(0, 1), (1, 1), (2, 1), (0, 2)],  # ┌──
-                [(0, 0), (1, 0), (1, 1), (1, 2)]   # │└─
-            ],
-            'O': [
-                [(0, 0), (1, 0), (0, 1), (1, 1)]   # Square
-            ],
-            'S': [
-                [(1, 0), (2, 0), (0, 1), (1, 1)],  # ─┐
-                [(1, 0), (1, 1), (2, 1), (2, 2)]   # └┘
-            ],
-            'T': [
-                [(1, 0), (0, 1), (1, 1), (2, 1)],  # ─┬─
-                [(1, 0), (1, 1), (2, 1), (1, 2)],  # └┼─
-                [(0, 1), (1, 1), (2, 1), (1, 2)],  # ─┼┘
-                [(1, 0), (0, 1), (1, 1), (1, 2)]   # ─┼┐
-            ],                                      # └┘
-            'Z': [
-                [(0, 0), (1, 0), (1, 1), (2, 1)],  # ┌─┐
-                [(2, 0), (1, 1), (2, 1), (1, 2)]   # └─┘
-            ]
-        }
+        # Create a black board with gridlines
+        width = board_width * cell_size + sidebar_width
+        height = board_height * cell_size
+        board_image = Image.new('RGB', (width, height), (0, 0, 0))
+        draw = ImageDraw.Draw(board_image)
         
-        # Store piece shapes for movement simulation
-        self.piece_shapes = piece_shapes
-        
-        # Mapping from piece type to color index
-        piece_colors = {
-            'I': 1,
-            'J': 2,
-            'L': 3,
-            'O': 4,
-            'S': 5,
-            'T': 6,
-            'Z': 7
-        }
-        
-        # Store piece colors for later use
-        self.piece_colors = piece_colors
-        
-        # Create image (board + UI elements)
-        # Grid cell size in pixels
-        cell_size = 30
-        
-        # Main board dimensions
-        board_width = 10 * cell_size
-        board_height = 20 * cell_size
-        
-        # UI panel width
-        ui_width = 6 * cell_size
-        
-        # Total image dimensions
-        img_width = board_width + ui_width
-        img_height = board_height
-        
-        # Create blank image with black background
-        image = Image.new('RGB', (img_width, img_height), colors[0])
-        draw = ImageDraw.Draw(image)
-        
-        # Draw grid lines
-        for x in range(11):
-            x_pos = x * cell_size
-            draw.line([(x_pos, 0), (x_pos, board_height)], fill=colors[9], width=1)
-        
-        for y in range(21):
-            y_pos = y * cell_size
-            draw.line([(0, y_pos), (board_width, y_pos)], fill=colors[9], width=1)
+        # Draw grid lines (slightly brighter)
+        grid_color = (40, 40, 40)  # Dark gray
+        for i in range(board_width + 1):
+            draw.line([(i * cell_size, 0), (i * cell_size, height)], fill=grid_color)
+        for i in range(board_height + 1):
+            draw.line([(0, i * cell_size), (board_width * cell_size, i * cell_size)], fill=grid_color)
         
         # Draw board state (existing pieces)
         for y, row in enumerate(self.board):
             for x, cell in enumerate(row):
                 if cell > 0:
-                    # Draw filled cell
-                    rect = [
-                        x * cell_size + 1,
-                        y * cell_size + 1,
-                        (x + 1) * cell_size - 1,
-                        (y + 1) * cell_size - 1
-                    ]
-                    draw.rectangle(rect, fill=colors[cell])
+                    # Draw filled cell with a slight 3D effect
+                    cell_color = colors[cell]
+                    highlight = tuple(min(c + 60, 255) for c in cell_color)
+                    shadow = tuple(max(c - 60, 0) for c in cell_color)
+                    
+                    # Fill cell
+                    draw.rectangle(
+                        [(x * cell_size + 1, y * cell_size + 1), 
+                         ((x + 1) * cell_size - 1, (y + 1) * cell_size - 1)], 
+                        fill=cell_color
+                    )
+                    
+                    # Top and left edges (highlight)
+                    draw.line([(x * cell_size + 1, y * cell_size + 1), ((x+1) * cell_size - 1, y * cell_size + 1)], fill=highlight, width=2)
+                    draw.line([(x * cell_size + 1, y * cell_size + 1), (x * cell_size + 1, (y+1) * cell_size - 1)], fill=highlight, width=2)
+                    
+                    # Bottom and right edges (shadow)
+                    draw.line([(x * cell_size + 1, (y+1) * cell_size - 1), ((x+1) * cell_size - 1, (y+1) * cell_size - 1)], fill=shadow, width=2)
+                    draw.line([((x+1) * cell_size - 1, y * cell_size + 1), ((x+1) * cell_size - 1, (y+1) * cell_size - 1)], fill=shadow, width=2)
         
-        # Draw current piece
+        # Draw current piece if it exists
         if self.current_piece:
             piece_type = self.current_piece['type']
-            rotation = self.current_piece.get('rotation', 0) % len(piece_shapes[piece_type])
-            x_offset = self.current_piece['x']
-            y_offset = self.current_piece['y']
+            piece_x = self.current_piece['x']
+            piece_y = self.current_piece['y']
+            rotation = self.current_piece.get('rotation', 0)
             
-            for x, y in piece_shapes[piece_type][rotation]:
-                rect = [
-                    (x_offset + x) * cell_size + 1,
-                    (y_offset + y) * cell_size + 1,
-                    (x_offset + x + 1) * cell_size - 1,
-                    (y_offset + y + 1) * cell_size - 1
-                ]
-                draw.rectangle(rect, fill=colors[piece_colors[piece_type]])
+            # Get color and shape based on type and rotation
+            color_idx = piece_colors.get(piece_type, 6)  # Default to purple (T) if unknown
+            color = colors[color_idx]
+            
+            # Ensure rotation is valid for the piece type
+            max_rotations = len(piece_shapes[piece_type])
+            rotation = rotation % max_rotations
+            
+            # Get the shape for this rotation
+            shape = piece_shapes[piece_type][rotation]
+            
+            # Draw each cell of the piece
+            for dx, dy in shape:
+                # Calculate actual position
+                px = piece_x + dx
+                py = piece_y + dy
+                
+                # Only draw if within the board boundaries
+                if 0 <= px < board_width and 0 <= py < board_height:
+                    # Draw filled cell with 3D effect
+                    highlight = tuple(min(c + 60, 255) for c in color)
+                    shadow = tuple(max(c - 60, 0) for c in color)
+                    
+                    # Fill cell
+                    draw.rectangle(
+                        [(px * cell_size + 1, py * cell_size + 1), 
+                         ((px + 1) * cell_size - 1, (py + 1) * cell_size - 1)], 
+                        fill=color
+                    )
+                    
+                    # Top and left edges (highlight)
+                    draw.line([(px * cell_size + 1, py * cell_size + 1), ((px+1) * cell_size - 1, py * cell_size + 1)], fill=highlight, width=2)
+                    draw.line([(px * cell_size + 1, py * cell_size + 1), (px * cell_size + 1, (py+1) * cell_size - 1)], fill=highlight, width=2)
+                    
+                    # Bottom and right edges (shadow)
+                    draw.line([(px * cell_size + 1, (py+1) * cell_size - 1), ((px+1) * cell_size - 1, (py+1) * cell_size - 1)], fill=shadow, width=2)
+                    draw.line([((px+1) * cell_size + 1, py * cell_size + 1), ((px+1) * cell_size - 1, (py+1) * cell_size - 1)], fill=shadow, width=2)
         
-        # Draw UI panel
-        ui_start_x = board_width
+        # Draw sidebar
+        sidebar_start = board_width * cell_size
+        draw.rectangle([(sidebar_start, 0), (width, height)], fill=(20, 20, 20))
         
-        # Draw panel background
-        draw.rectangle([
-            ui_start_x, 0,
-            img_width, img_height
-        ], fill=(30, 30, 30))
-        
-        # Draw "NEXT" text
+        # Draw labels
         try:
-            font = ImageFont.truetype("arial.ttf", 20)
+            font = ImageFont.truetype("arial.ttf", 24)
+            small_font = ImageFont.truetype("arial.ttf", 18)
         except:
+            # Fallback to default font if Arial is not available
             font = ImageFont.load_default()
+            small_font = ImageFont.load_default()
         
-        draw.text((ui_start_x + 20, 20), "NEXT", fill=(255, 255, 255), font=font)
+        # Draw "NEXT" label
+        draw.text((sidebar_start + 20, 10), "NEXT", fill=(255, 255, 255), font=font)
         
-        # Draw next piece
-        if self.next_piece:
-            piece_type = self.next_piece['type']
-            next_piece_color = piece_colors[piece_type]
+        # Draw next piece preview
+        next_type = self.next_piece.get('type', 'I')
+        next_color = colors[piece_colors.get(next_type, 1)]
+        next_shape = piece_shapes[next_type][0]  # Use the first rotation
+        
+        # Draw next piece centered in the preview area
+        preview_cell_size = 25
+        preview_x = sidebar_start + 60
+        preview_y = 50
+        
+        # Determine the dimensions of the piece
+        min_dx = min(dx for dx, _ in next_shape)
+        max_dx = max(dx for dx, _ in next_shape)
+        min_dy = min(dy for _, dy in next_shape)
+        max_dy = max(dy for _, dy in next_shape)
+        width_cells = max_dx - min_dx + 1
+        height_cells = max_dy - min_dy + 1
+        
+        # Calculate center offsets
+        offset_x = (4 - width_cells) // 2  # Assuming 4x4 preview area
+        offset_y = (2 - height_cells) // 2
+        
+        # Draw the next piece
+        for dx, dy in next_shape:
+            # Adjust for center and size
+            px = preview_x + (dx + offset_x) * preview_cell_size
+            py = preview_y + (dy + offset_y) * preview_cell_size
             
-            # Center the piece in the next piece box
-            next_x = ui_start_x + ui_width // 2 - cell_size
-            next_y = 60
+            # Draw with 3D effect
+            highlight = tuple(min(c + 60, 255) for c in next_color)
+            shadow = tuple(max(c - 60, 0) for c in next_color)
             
-            # Draw only the first rotation
-            for x, y in piece_shapes[piece_type][0]:
-                rect = [
-                    next_x + x * cell_size + 1,
-                    next_y + y * cell_size + 1,
-                    next_x + (x + 1) * cell_size - 1,
-                    next_y + (y + 1) * cell_size - 1
-                ]
-                draw.rectangle(rect, fill=colors[next_piece_color])
+            # Fill cell
+            draw.rectangle(
+                [(px, py), (px + preview_cell_size, py + preview_cell_size)],
+                fill=next_color
+            )
+            
+            # 3D effect
+            draw.line([(px, py), (px + preview_cell_size, py)], fill=highlight, width=2)
+            draw.line([(px, py), (px, py + preview_cell_size)], fill=highlight, width=2)
+            draw.line([(px, py + preview_cell_size), (px + preview_cell_size, py + preview_cell_size)], fill=shadow, width=2)
+            draw.line([(px + preview_cell_size, py), (px + preview_cell_size, py + preview_cell_size)], fill=shadow, width=2)
         
-        # Draw score or other UI elements
-        draw.text((ui_start_x + 10, 180), "SCORE", fill=(255, 255, 255), font=font)
-        draw.text((ui_start_x + 10, 210), "0", fill=(255, 255, 255), font=font)
+        # Draw score and level (placeholders for a real game)
+        draw.text((sidebar_start + 20, 190), "SCORE", fill=(255, 255, 255), font=font)
+        draw.text((sidebar_start + 20, 220), "0", fill=(255, 255, 255), font=font)
         
-        # Draw level
-        draw.text((ui_start_x + 10, 260), "LEVEL", fill=(255, 255, 255), font=font)
-        draw.text((ui_start_x + 10, 290), "1", fill=(255, 255, 255), font=font)
+        draw.text((sidebar_start + 20, 270), "LEVEL", fill=(255, 255, 255), font=font)
+        draw.text((sidebar_start + 20, 300), "1", fill=(255, 255, 255), font=font)
         
-        # Add a watermark to indicate this is a simulated board
-        draw.text((ui_start_x + 10, img_height - 30), "SIMULATED", fill=(255, 100, 100), font=font)
+        # Add "SIMULATED" text at the bottom
+        draw.text((sidebar_start + 20, height - 30), "SIMULATED", fill=(255, 80, 80), font=small_font)
         
-        self.simulated_board = image
-        return image
+        # Store the board image for later use
+        self.simulated_board = board_image
+        return board_image
 
     def simulate_random_board_state(self, fill_percentage=30, max_height=15):
         """
@@ -870,45 +907,145 @@ pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautog
         return None
     
     def is_valid_position(self, piece):
-        """Check if the piece position is valid (not outside board or colliding)"""
+        """
+        Check if a piece position is valid (not colliding or out of bounds)
+        """
         if not piece:
             return False
             
-        piece_type = piece['type']
-        x_offset = piece['x']
-        y_offset = piece['y']
-        rotation = piece['rotation'] % len(self.piece_shapes[piece_type])
+        # Define piece shapes for all rotations (same as in create_simulated_tetris_board)
+        piece_shapes = {
+            'I': [
+                [(0, 0), (0, 1), (0, 2), (0, 3)],     # Horizontal
+                [(0, 0), (1, 0), (2, 0), (3, 0)]      # Vertical
+            ],
+            'J': [
+                [(0, 0), (1, 0), (1, 1), (1, 2)],     # ┌
+                [(0, 0), (0, 1), (1, 0), (2, 0)],     # ┘
+                [(0, 0), (0, 1), (0, 2), (1, 2)],     # └
+                [(0, 1), (1, 1), (2, 1), (2, 0)]      # ┐
+            ],
+            'L': [
+                [(0, 2), (1, 0), (1, 1), (1, 2)],     # ┐
+                [(0, 0), (1, 0), (2, 0), (2, 1)],     # └
+                [(0, 0), (0, 1), (0, 2), (1, 0)],     # ┌
+                [(0, 0), (0, 1), (1, 1), (2, 1)]      # ┘
+            ],
+            'O': [
+                [(0, 0), (0, 1), (1, 0), (1, 1)]      # Square (single rotation)
+            ],
+            'S': [
+                [(0, 1), (0, 2), (1, 0), (1, 1)],     # Horizontal
+                [(0, 0), (1, 0), (1, 1), (2, 1)]      # Vertical
+            ],
+            'T': [
+                [(0, 1), (1, 0), (1, 1), (1, 2)],     # ┬
+                [(0, 0), (1, 0), (1, 1), (2, 0)],     # ├
+                [(0, 0), (0, 1), (0, 2), (1, 1)],     # ┴
+                [(0, 1), (1, 0), (1, 1), (2, 1)]      # ┤
+            ],
+            'Z': [
+                [(0, 0), (0, 1), (1, 1), (1, 2)],     # Horizontal
+                [(0, 1), (1, 0), (1, 1), (2, 0)]      # Vertical
+            ]
+        }
         
-        for x, y in self.piece_shapes[piece_type][rotation]:
-            # Check if piece is within board boundaries
-            board_x = x_offset + x
-            board_y = y_offset + y
+        piece_type = piece['type']
+        x = piece['x']
+        y = piece['y']
+        rotation = piece['rotation'] % len(piece_shapes[piece_type])
+        
+        # Get the blocks for this piece and rotation
+        blocks = piece_shapes[piece_type][rotation]
+        
+        # Check each block of the piece
+        for dx, dy in blocks:
+            # Calculate board position
+            board_x = x + dx
+            board_y = y + dy
             
-            # Outside board boundaries
-            if (board_x < 0 or board_x >= 10 or 
-                board_y < 0 or board_y >= 20):
+            # Check boundaries
+            if board_x < 0 or board_x >= 10 or board_y < 0 or board_y >= 20:
                 return False
                 
             # Collision with existing blocks
             if board_y >= 0 and self.board[board_y][board_x] > 0:
                 return False
-                
+        
+        # If we get here, position is valid
         return True
-    
+
     def lock_piece(self, piece):
-        """Lock the piece in place on the board"""
+        """
+        Lock the piece onto the board
+        """
         if not piece:
             return
             
-        piece_type = piece['type']
-        x_offset = piece['x']
-        y_offset = piece['y']
-        rotation = piece['rotation'] % len(self.piece_shapes[piece_type])
-        color_index = self.piece_colors[piece_type]
+        # Define piece shapes for all rotations (same as in create_simulated_tetris_board)
+        piece_shapes = {
+            'I': [
+                [(0, 0), (0, 1), (0, 2), (0, 3)],     # Horizontal
+                [(0, 0), (1, 0), (2, 0), (3, 0)]      # Vertical
+            ],
+            'J': [
+                [(0, 0), (1, 0), (1, 1), (1, 2)],     # ┌
+                [(0, 0), (0, 1), (1, 0), (2, 0)],     # ┘
+                [(0, 0), (0, 1), (0, 2), (1, 2)],     # └
+                [(0, 1), (1, 1), (2, 1), (2, 0)]      # ┐
+            ],
+            'L': [
+                [(0, 2), (1, 0), (1, 1), (1, 2)],     # ┐
+                [(0, 0), (1, 0), (2, 0), (2, 1)],     # └
+                [(0, 0), (0, 1), (0, 2), (1, 0)],     # ┌
+                [(0, 0), (0, 1), (1, 1), (2, 1)]      # ┘
+            ],
+            'O': [
+                [(0, 0), (0, 1), (1, 0), (1, 1)]      # Square (single rotation)
+            ],
+            'S': [
+                [(0, 1), (0, 2), (1, 0), (1, 1)],     # Horizontal
+                [(0, 0), (1, 0), (1, 1), (2, 1)]      # Vertical
+            ],
+            'T': [
+                [(0, 1), (1, 0), (1, 1), (1, 2)],     # ┬
+                [(0, 0), (1, 0), (1, 1), (2, 0)],     # ├
+                [(0, 0), (0, 1), (0, 2), (1, 1)],     # ┴
+                [(0, 1), (1, 0), (1, 1), (2, 1)]      # ┤
+            ],
+            'Z': [
+                [(0, 0), (0, 1), (1, 1), (1, 2)],     # Horizontal
+                [(0, 1), (1, 0), (1, 1), (2, 0)]      # Vertical
+            ]
+        }
         
-        for x, y in self.piece_shapes[piece_type][rotation]:
-            board_x = x_offset + x
-            board_y = y_offset + y
+        # Map piece type to color index
+        piece_colors = {
+            'I': 1,  # cyan
+            'J': 2,  # blue
+            'L': 3,  # orange
+            'O': 4,  # yellow
+            'S': 5,  # green
+            'T': 6,  # purple
+            'Z': 7   # red
+        }
+        
+        piece_type = piece['type']
+        x = piece['x']
+        y = piece['y']
+        rotation = piece['rotation'] % len(piece_shapes[piece_type])
+        
+        # Get color for this piece type
+        color_index = piece_colors.get(piece_type, 6)  # Default to purple (T) if unknown
+        
+        # Get the blocks for this piece and rotation
+        blocks = piece_shapes[piece_type][rotation]
+        
+        # Lock each block onto the board
+        for dx, dy in blocks:
+            # Calculate board position
+            board_x = x + dx
+            board_y = y + dy
             
             # Only place if within board
             if 0 <= board_x < 10 and 0 <= board_y < 20:
@@ -1071,7 +1208,7 @@ def main():
     args = parser.parse_args()
     
     # Configure from environment variables if not provided as args
-    model = args.model or os.environ.get('CLAUDE_MODEL', 'claude-3-opus-20240229')
+    model = args.model or os.environ.get('CLAUDE_MODEL', 'claude-3-7-sonnet-20250219')
     output_dir = args.output or os.environ.get('OUTPUT_DIR', '.')
     window_title = args.window or os.environ.get('TETRIS_WINDOW_TITLE', None)
     
