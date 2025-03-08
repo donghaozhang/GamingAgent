@@ -1,25 +1,26 @@
-# 设置默认行为，如果core.autocrlf没有设置
+# Set default behavior to automatically normalize line endings
 * text=auto
 
-# 明确声明应该规范化的文本文件
-*.py text
-*.md text
-*.txt text
-*.json text
-*.yml text
-*.yaml text
-*.html text
-*.css text
-*.js text
-
-# 确保这些特定文件总是使用LF行尾，即使在Windows上
+# Explicitly declare text files that should use LF
 *.py text eol=lf
-*.sh text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
 
-# 二进制文件不应被修改
+# Declare files that will always have CRLF line endings (Windows)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Denote all files that are truly binary and should not be modified
 *.png binary
 *.jpg binary
 *.jpeg binary
 *.gif binary
 *.ico binary
+*.zip binary
+*.tar binary
+*.gz binary
 *.pdf binary 

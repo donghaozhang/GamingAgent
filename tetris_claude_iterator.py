@@ -132,6 +132,7 @@ The speed pieces drop is at around ~0.75s/grid block.
 - space: drop piece immediately
 
 ### Strategies and Caveats:
+0. Clear the horizontal rows as soon as possible.
 1. Prioritize keeping the stack flat and balanced
 2. Avoid creating holes
 3. If you see a chance to clear lines, do it
