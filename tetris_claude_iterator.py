@@ -25,96 +25,110 @@ import sys
 import time
 import base64
 import json
-import pyautogui
+import re
+import io
 import traceback
+import tempfile
 from datetime import datetime
-from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
+import pyautogui
 from pynput import keyboard
-from pathlib import Path
-import argparse
+import anthropic
 
-# Load environment variables from .env file
+# Try to load optional dependencies
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+# Default values (can be overridden by .env or command-line args)
+MODEL = os.environ.get('CLAUDE_MODEL', 'claude-3-opus-20240229')
+OUTPUT_DIR = os.environ.get('OUTPUT_DIR', '.')
+TETRIS_WINDOW_TITLE = os.environ.get('TETRIS_WINDOW_TITLE', None)
+
 def load_env_file():
-    """Load environment variables from .env file"""
-    env_path = Path(__file__).parent / '.env'
-    if env_path.exists():
-        print(f"Loading environment variables from {env_path}")
-        with open(env_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                key, value = line.split('=', 1)
-                os.environ[key] = value
-                print(f"Loaded {key} from .env file")
+    """Load environment variables from .env file if available"""
+    if load_dotenv:
+        # Try to load from .env file
+        if os.path.exists('.env'):
+            print("Loading environment variables from .env file")
+            load_dotenv('.env')
+            
+            # Check if key variables were loaded
+            api_key = os.environ.get('ANTHROPIC_API_KEY')
+            if api_key:
+                print("Successfully loaded ANTHROPIC_API_KEY")
+            else:
+                print("Warning: ANTHROPIC_API_KEY not found in .env file")
+                
+            # Also check for OpenAI key
+            openai_key = os.environ.get('OPENAI_API_KEY')
+            if openai_key:
+                print("Loaded OPENAI_API_KEY from .env file")
+                
+            # Check for other API keys
+            for key in ['GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'OPENROUTER_MODEL']:
+                if os.environ.get(key):
+                    print(f"Loaded {key} from .env file")
     else:
-        print(f"Warning: .env file not found at {env_path}")
+        print("python-dotenv not installed. Skipping .env file loading.")
+        print("Install with: pip install python-dotenv")
 
 # Load environment variables from .env file
 load_env_file()
 
-# Import Anthropic client - install with: pip install anthropic
-try:
-    import anthropic
-except ImportError:
-    print("Please install Anthropic Python client: pip install anthropic")
-    sys.exit(1)
-
-# Configuration
-CLAUDE_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-if not CLAUDE_API_KEY:
-    print("Error: ANTHROPIC_API_KEY environment variable not found.")
-    print("Please create a .env file in the GamingAgent directory with your API key.")
-    print("Example: ANTHROPIC_API_KEY=sk-ant-api03-...")
-    sys.exit(1)
-else:
-    print("Successfully loaded ANTHROPIC_API_KEY")
-
-MODEL = "claude-3-7-sonnet-20250219"  # Change to the desired model
-OUTPUT_DIR = "claude_tetris_outputs"
-TETRIS_WINDOW_TITLE = "Simple Tetris"  # Window title to look for
-
-
 class TetrisClaudeIterator:
     def __init__(self, model=None, output_dir=None, window_title=None, save_responses=False):
-        self.client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
-        self.iteration = 0
-        self.stop_flag = False
+        # Initialize Claude API
+        self.model = model or "claude-3-opus-20240229"
         
-        # Use provided arguments or fall back to global defaults
-        self.model = model or MODEL
-        self.output_dir = output_dir or OUTPUT_DIR
-        self.window_title = window_title or TETRIS_WINDOW_TITLE
+        # Set up logging and directories
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        self.base_dir = output_dir or "."
+        
+        # Create session directory
+        self.session_name = f"session_{timestamp}"
+        self.session_dir = os.path.join(self.base_dir, "game_logs", self.session_name)
+        self.screenshots_dir = os.path.join(self.session_dir, "screenshots")
+        self.responses_dir = os.path.join(self.session_dir, "responses")
+        
+        # Create directories
+        os.makedirs(self.session_dir, exist_ok=True)
+        os.makedirs(self.screenshots_dir, exist_ok=True)
+        if save_responses:
+            os.makedirs(self.responses_dir, exist_ok=True)
+        
+        # Set up log file
+        self.log_file = os.path.join(self.session_dir, "log.txt")
+        with open(self.log_file, "w") as f:
+            f.write(f"=== Tetris Claude Iterator Log - {timestamp} ===\n\n")
+        
+        # Track iteration
+        self.iteration = 0
+        
+        # Set window title to find for real Tetris
+        self.window_title = window_title
+        
+        # Save API response JSON
         self.save_responses = save_responses
         
-        self.session_dir = os.path.join(self.output_dir, f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-        self.screenshots_dir = os.path.join(self.session_dir, "screenshots")
-        self.responses_dir = os.path.join(self.session_dir, "responses") if save_responses else None
-        self.manual_window_position = None
+        # For window detection
+        self.window_rect = None
+        self.stop_flag = False
         
         # Simulation mode flag and state
-        self.use_simulated_board = True  # Default to True now
+        self.simulated_mode = True  # Default to True now
         self.simulated_board = None
-        self.board_state = None
+        self.board = None
         self.current_piece = None
         self.next_piece = None
         
-        # Create output directories
-        os.makedirs(self.screenshots_dir, exist_ok=True)
-        if self.save_responses:
-            os.makedirs(self.responses_dir, exist_ok=True)
+        # Add auto-space counter (maximum 4 automatic space presses)
+        self.auto_space_counter = 0
+        self.max_auto_spaces = 4
         
-        # Create log file
-        self.log_path = os.path.join(self.session_dir, "session_log")
-        with open(self.log_path, "w", encoding="utf-8") as f:
-            f.write(f"=== Tetris Claude Iterator Session started at {datetime.now()} ===\n\n")
-            f.write(f"Model: {self.model}\n")
-            f.write(f"Window title: {self.window_title}\n")
-            f.write(f"Output directory: {self.session_dir}\n\n")
-        
-        # System prompt
-        self.system_prompt = """You are an expert Tetris player. 
+        # Define prompts for Claude
+        self.system_prompt = """You are a Tetris game-playing assistant. 
 Your task is to analyze the current Tetris board and suggest the best moves for the current piece.
 Be strategic about your moves, considering the current piece and the next piece if visible."""
 
@@ -133,8 +147,8 @@ The speed pieces drop is at around ~0.75s/grid block.
 
 ### Strategies and Caveats:
 0. Clear the horizontal rows as soon as possible.
-1. Prioritize keeping the stack flat and balanced
-2. Avoid creating holes
+2. Prioritize keeping the stack flat and balanced
+1. Avoid creating holes you know you can rotate piece to match
 3. If you see a chance to clear lines, do it
 4. Only control the current piece visible at the top
 
@@ -155,54 +169,35 @@ Here's the current Tetris game state image:
         print(log_entry)
         
         # Save to log file
-        try:
-            with open(self.log_path, "a", encoding="utf-8", errors="replace") as f:
-                f.write(log_entry + "\n")
-        except Exception as e:
-            print(f"Error writing to log file: {e}")
+        with open(self.log_file, "a", encoding="utf-8") as f:
+            f.write(log_entry + "\n")
 
     def find_tetris_window(self):
-        """Find the Tetris window coordinates"""
-        # If manual window position is provided, use it
-        if self.manual_window_position:
-            self.log_message(f"Using manually specified window position: {self.manual_window_position}")
-            return self.manual_window_position
-            
+        """Find the Tetris window by title or default to the entire screen"""
         try:
-            import pygetwindow as gw
+            # If a specific window title is provided, try to find it
+            if self.window_title:
+                windows = pyautogui.getWindowsWithTitle(self.window_title)
+                if windows:
+                    window = windows[0]
+                    self.log_message(f"Found Tetris window: {window.title} at {window.left}, {window.top}, {window.width}, {window.height}")
+                    # Set window rectangle
+                    self.window_rect = (window.left, window.top, window.width, window.height)
+                    return
             
-            # Look for window with Tetris in the title
-            tetris_windows = gw.getWindowsWithTitle(self.window_title)
+            # List all available windows for debugging
+            self.log_message("Available windows:")
+            for window in pyautogui.getAllWindows():
+                self.log_message(f"  - '{window.title}' at {window.left}, {window.top}, {window.width}, {window.height}")
             
-            if tetris_windows:
-                window = tetris_windows[0]
-                self.log_message(f"Found Tetris window: {window.title} at {window.left}, {window.top}, {window.width}, {window.height}")
-                return window.left, window.top, window.width, window.height
-            else:
-                # If we can't find the window, use a default region
-                self.log_message("Tetris window not found. Using default screen area.")
-                
-                # List all available windows to help user
-                self.log_message("Available windows:")
-                try:
-                    all_windows = gw.getAllWindows()
-                    for window in all_windows:
-                        if window.title:  # Only show windows with titles
-                            self.log_message(f"  - '{window.title}' at {window.left}, {window.top}, {window.width}, {window.height}")
-                except Exception as e:
-                    self.log_message(f"Error listing windows: {e}")
-                
-                # Use default left portion of the screen
-                screen_width, screen_height = pyautogui.size()
-                return 0, 0, int(screen_width * 0.4), screen_height
-                
-        except ImportError:
-            self.log_message("pygetwindow not found. Please install with: pip install pygetwindow")
-            self.log_message("Using default screen area...")
+            # Default to a standard size for the left half of the screen
+            self.window_rect = (0, 0, 768, 1080)  # Default to left side of screen
             
-            # Use default screen area (left half of the screen)
-            screen_width, screen_height = pyautogui.size()
-            return 0, 0, int(screen_width * 0.4), screen_height
+        except Exception as e:
+            self.log_message(f"Error finding Tetris window: {str(e)}")
+            traceback.print_exc()
+            # Default to a standard size for the left half of the screen
+            self.window_rect = (0, 0, 768, 1080)  # Default to left side of screen
 
     def create_simulated_tetris_board(self, board_state=None, current_piece=None, next_piece=None):
         """
@@ -218,15 +213,15 @@ Here's the current Tetris game state image:
         """
         # Store the board state and pieces for later use
         if board_state is not None:
-            self.board_state = board_state
+            self.board = board_state
         if current_piece is not None:
             self.current_piece = current_piece
         if next_piece is not None:
             self.next_piece = next_piece
             
         # If any are still None, initialize with defaults
-        if self.board_state is None:
-            self.board_state = [[0 for _ in range(10)] for _ in range(20)]
+        if self.board is None:
+            self.board = [[0 for _ in range(10)] for _ in range(20)]
         if self.current_piece is None:
             self.current_piece = {
                 'type': 'T',
@@ -334,7 +329,7 @@ Here's the current Tetris game state image:
             draw.line([(0, y_pos), (board_width, y_pos)], fill=colors[9], width=1)
         
         # Draw board state (existing pieces)
-        for y, row in enumerate(self.board_state):
+        for y, row in enumerate(self.board):
             for x, cell in enumerate(row):
                 if cell > 0:
                     # Draw filled cell
@@ -459,115 +454,149 @@ Here's the current Tetris game state image:
     def capture_screenshot(self):
         """Capture screenshot of the Tetris game"""
         # If we're using a simulated board, return that instead
-        if self.use_simulated_board and self.simulated_board:
+        if self.simulated_mode and self.simulated_board:
+            # For simulated mode, save the image and return it
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
             screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_simulated_iter_{self.iteration}")
-            self.simulated_board.save(screenshot_path + ".png")  # Still need .png for PIL to save properly
-            self.log_message(f"Simulated Tetris board saved to: {screenshot_path}")
-            return screenshot_path + ".png", self.simulated_board
-            
-        # Otherwise capture a real screenshot
+            self.simulated_board.save(f"{screenshot_path}.png")
+            self.log_message(f"Screenshot saved to: {screenshot_path}")
+            return self.simulated_board
+        
+        # For real Tetris, try to find the window
+        if not self.window_rect:
+            self.find_tetris_window()
+        
+        # If we still don't have a window rect, use default screen area
+        if not self.window_rect:
+            self.log_message("Tetris window not found. Using default screen area.")
+            self.window_rect = (0, 0, 768, 1080)  # Default to capturing left side of screen
+        
+        # Take screenshot
         try:
-            # Find Tetris window
-            region = self.find_tetris_window()
-            
-            # Capture screenshot
-            self.log_message(f"Capturing screenshot of region: {region}")
-            screenshot = pyautogui.screenshot(region=region)
+            self.log_message(f"Capturing screenshot of region: {self.window_rect}")
+            screen_region = self.window_rect
+            screenshot = pyautogui.screenshot(region=screen_region)
             
             # Save screenshot
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
             screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_iter_{self.iteration}")
-            screenshot.save(screenshot_path + ".png")  # Still need .png for PIL to save properly
-            
-            # Add timestamp to screenshot
-            draw = ImageDraw.Draw(screenshot)
-            try:
-                font = ImageFont.truetype("arial.ttf", 14)
-            except:
-                font = ImageFont.load_default()
-            
-            draw.text((10, 10), f"{timestamp} - Iteration {self.iteration}", fill="white", font=font)
-            screenshot.save(screenshot_path + ".png")
-            
+            screenshot.save(f"{screenshot_path}.png")
             self.log_message(f"Screenshot saved to: {screenshot_path}")
             
-            return screenshot_path + ".png", screenshot
-            
+            return screenshot
         except Exception as e:
             self.log_message(f"Error capturing screenshot: {str(e)}")
             traceback.print_exc()
-            return None, None
+            return None
 
     def encode_image(self, image):
-        """Encode image to base64"""
-        buffered = BytesIO()
-        image.save(buffered, format="PNG")
-        return base64.b64encode(buffered.getvalue()).decode("utf-8")
+        """Encode an image to base64 for API usage"""
+        if image is None:
+            self.log_message("Error: Cannot encode None image")
+            return None
+            
+        try:
+            # Check if image is a PIL Image, if not try to open it
+            if not isinstance(image, Image.Image):
+                # If it's a path string, try to open it
+                if isinstance(image, str) and os.path.exists(image):
+                    image = Image.open(image)
+                else:
+                    self.log_message(f"Error: Invalid image type: {type(image)}")
+                    return None
+                    
+            # Convert image to base64
+            buffered = io.BytesIO()
+            image.save(buffered, format="PNG")
+            return base64.b64encode(buffered.getvalue()).decode("utf-8")
+        except Exception as e:
+            self.log_message(f"Error encoding image: {str(e)}")
+            traceback.print_exc()
+            return None
 
     def call_claude_api(self, image):
-        """Call Claude API with the Tetris screenshot"""
+        """Call Claude API with an image"""
+        self.log_message(f"Calling Claude API with model {self.model} (iteration {self.iteration})...")
+
         try:
-            self.log_message(f"Calling Claude API with model {self.model} (iteration {self.iteration})...")
-            start_time = time.time()
-            
-            # Encode image
+            # Encode image for API
             base64_image = self.encode_image(image)
-            
-            # Call Claude API
-            response = self.client.messages.create(
+            if not base64_image:
+                raise ValueError("Failed to encode image")
+
+            # Load API key from environment variable
+            api_key = os.environ.get('ANTHROPIC_API_KEY')
+            if not api_key:
+                raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
+
+            # Prepare the client
+            client = anthropic.Anthropic(api_key=api_key)
+
+            # Prepare message content
+            system_prompt = self.system_prompt
+            user_prompt = self.instruction_prompt
+
+            # Call the API
+            response = client.messages.create(
                 model=self.model,
-                max_tokens=1024,
-                system=self.system_prompt,
+                max_tokens=2000,
+                system=system_prompt,
                 messages=[
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": self.instruction_prompt},
-                            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base64_image}}
+                            {
+                                "type": "text",
+                                "text": user_prompt
+                            },
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/png",
+                                    "data": base64_image
+                                }
+                            }
                         ]
                     }
                 ]
             )
-            
-            elapsed_time = time.time() - start_time
-            self.log_message(f"Claude API response received in {elapsed_time:.2f}s")
-            
-            # Extract content
-            response_content = response.content[0].text
-            
-            # Log response to session log but don't create separate files
-            self.log_message(f"=== Claude API Response (Iteration {self.iteration}) ===")
-            self.log_message(f"Model: {self.model}")
-            self.log_message(f"API Latency: {elapsed_time:.2f}s")
-            
-            # Save the response if enabled
+
+            # Save the response to a file if enabled
             if self.save_responses:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                response_path = os.path.join(self.responses_dir, f"{timestamp}_response_{self.iteration}")
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                response_path = os.path.join(
+                    self.responses_dir,
+                    f"response_{self.iteration}_{timestamp}.json"
+                )
                 with open(response_path, "w", encoding="utf-8") as f:
-                    f.write(f"=== Claude API Response (Iteration {self.iteration}) ===\n")
-                    f.write(f"Timestamp: {timestamp}\n")
-                    f.write(f"Model: {self.model}\n")
-                    f.write(f"API Latency: {elapsed_time:.2f}s\n\n")
-                    f.write(response_content)
-                
-                self.log_message(f"Response saved to: {response_path}")
-            
-            return response_content
-            
+                    json.dump(response.dict(), f, indent=2)
+
+            return response.content[0].text
+
         except Exception as e:
-            self.log_message(f"Error calling Claude API: {str(e)}")
+            error_message = str(e)
+            self.log_message(f"Error calling Claude API: {error_message}")
             traceback.print_exc()
-            return f"Error: {str(e)}"
+            return f"Error: {error_message}"
 
     def wait_for_space_key(self):
-        """Wait for the user to press the space key"""
-        self.log_message("Press SPACE to continue or Q to quit...")
+        """Wait for the user to press the space key or auto-press if within limit"""
+        # If we haven't reached the auto-space limit, simulate a space press
+        if self.auto_space_counter < self.max_auto_spaces:
+            self.auto_space_counter += 1
+            self.log_message(f"Auto-pressing SPACE ({self.auto_space_counter}/{self.max_auto_spaces}) - Will stop after {self.max_auto_spaces} iterations...")
+            # Small delay to simulate real keypress and make auto-progress visible
+            time.sleep(1)
+            return True
         
+        # Otherwise, wait for manual input
+        self.log_message(f"Auto-space limit reached ({self.max_auto_spaces}). MANUAL INPUT REQUIRED...")
+        self.log_message(f"Press SPACE to continue or Q/ESC to quit...")
+
         space_pressed = False
         quit_pressed = False
-        
+
         def on_press(key):
             nonlocal space_pressed, quit_pressed
             try:
@@ -582,27 +611,15 @@ Here's the current Tetris game state image:
                     return False  # Stop listener
             except AttributeError:
                 pass
-        
-        # Start listener with a timeout mechanism
-        listener = keyboard.Listener(on_press=on_press)
-        listener.start()
-        
-        # Wait for key press with timeout to allow for interruption
-        max_wait = 60  # Maximum 60 seconds wait time
-        for _ in range(max_wait * 10):  # Check every 0.1 seconds
-            if space_pressed or quit_pressed or self.stop_flag:
-                break
-            time.sleep(0.1)
-            
-        # Ensure listener is stopped
-        if listener.is_alive():
-            listener.stop()
-        
+
+        # Collect events until space or q is pressed
+        with keyboard.Listener(on_press=on_press) as listener:
+            listener.join()
+
         if quit_pressed:
-            self.stop_flag = True
-            self.log_message("Quit requested. Stopping...")
+            self.log_message("Quit requested by user")
             return False
-        
+            
         return True
 
     def extract_python_code(self, text):
@@ -627,136 +644,124 @@ Here's the current Tetris game state image:
         return None
 
     def execute_code(self, code):
-        """Execute the code from Claude's response and simulate the movement"""
-        if not code:
-            self.log_message("No executable code found in response.")
-            return
+        """Execute the Python code extracted from Claude's response"""
+        self.log_message(f"Executing code from iteration {self.iteration}...")
         
-        self.log_message("Executing code...")
-        self.log_message(f"Code to execute:\n{code}")
+        # Ensure we have a simulated board for screenshot saving if in simulated mode
+        if self.simulated_mode and self.simulated_board is None:
+            self.log_message("Creating initial simulated Tetris board...")
+            self.create_simple_tetris_board()  # Create a default board if none exists
         
-        # Create a new dictionary to store the actions that will be performed
-        actions = []
+        # Save pre-execution screenshot
+        pre_screenshot_path = os.path.join(
+            self.screenshots_dir, 
+            f"pre_execution_{self.iteration}_{time.strftime('%Y%m%d_%H%M%S')}.png"
+        )
         
-        # Extract actions from the code
-        lines = code.strip().split('\n')
-        for line in lines:
-            if 'pyautogui.press' in line:
-                # Extract key from the press command
-                import re
-                match = re.search(r'press\([\'"](.+?)[\'"]\)', line)
-                if match:
-                    key = match.group(1)
-                    actions.append(key)
+        if self.simulated_mode:
+            # In simulated mode, save the current board
+            if self.simulated_board:
+                self.simulated_board.save(pre_screenshot_path)
+                self.log_message(f"Saved pre-execution screenshot: {os.path.basename(pre_screenshot_path)}")
+            else:
+                self.log_message("Cannot save pre-execution screenshot: simulated board is None")
+        else:
+            # For real Tetris, take a screenshot
+            screenshot = self.capture_screenshot()
+            if screenshot:
+                screenshot.save(pre_screenshot_path)
+                self.log_message(f"Saved pre-execution screenshot: {os.path.basename(pre_screenshot_path)}")
+            else:
+                self.log_message("Failed to capture pre-execution screenshot")
         
-        self.log_message(f"Extracted actions: {actions}")
-        
-        if not actions:
-            self.log_message("No valid actions found in code.")
-            return
-        
-        # Take a pre-execution screenshot of the initial state
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        pre_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_pre_execution_{self.iteration}")
-        self.simulated_board.save(pre_screenshot_path + ".png")  # Still need .png for PIL to save properly
-        
-        # Simulate piece movement based on actions
-        if self.use_simulated_board and self.current_piece:
-            # Clone the current piece for simulation
-            piece = self.current_piece.copy()
+        # Create a secure temp file for the code
+        with tempfile.NamedTemporaryFile(suffix='.py', delete=False, mode='w') as f:
+            temp_filename = f.name
             
-            for action in actions:
-                # Apply action to the piece
-                if action == 'left':
-                    piece['x'] -= 1
-                    # Check if valid (not outside board or colliding)
-                    if not self.is_valid_position(piece):
-                        piece['x'] += 1  # Undo if invalid
-                
-                elif action == 'right':
-                    piece['x'] += 1
-                    # Check if valid
-                    if not self.is_valid_position(piece):
-                        piece['x'] -= 1  # Undo if invalid
-                
-                elif action == 'up' or action == 'rotate':
-                    # Rotate piece (clockwise)
-                    piece_type = piece['type']
-                    max_rotation = len(self.piece_shapes[piece_type])
-                    piece['rotation'] = (piece['rotation'] + 1) % max_rotation
-                    # Check if valid
-                    if not self.is_valid_position(piece):
-                        # Try kick (wall kick) - move left or right if rotation causes collision
-                        # First try moving right
-                        piece['x'] += 1
-                        if not self.is_valid_position(piece):
-                            # If right doesn't work, try left
-                            piece['x'] -= 2
-                            if not self.is_valid_position(piece):
-                                # If left doesn't work either, undo rotation
-                                piece['x'] += 1  # Reset to original x
-                                piece['rotation'] = (piece['rotation'] - 1) % max_rotation
-                
-                elif action == 'down':
-                    piece['y'] += 1
-                    # Check if valid
-                    if not self.is_valid_position(piece):
-                        piece['y'] -= 1  # Undo if invalid
-                
-                elif action == 'space':
-                    # Hard drop - move down until collision
-                    while self.is_valid_position(piece):
-                        piece['y'] += 1
-                    # Move back up one step after finding invalid position
-                    piece['y'] -= 1
-                    
-                    # Lock the piece in place
-                    self.lock_piece(piece)
-                    
-                    # Use next piece as current piece
-                    import random
-                    piece_types = ['I', 'J', 'L', 'O', 'S', 'T', 'Z']
-                    self.current_piece = {
-                        'type': self.next_piece['type'],
-                        'x': 4,
-                        'y': 0,
-                        'rotation': 0
-                    }
-                    self.next_piece = {'type': random.choice(piece_types)}
-                    
-                    # Update piece for further actions
-                    piece = self.current_piece.copy()
-                    
-                    # Check and clear lines
-                    self.clear_lines()
+            # Add helper functions for simulated Tetris
+            if self.simulated_mode:
+                f.write("""
+# Helper functions for simulated Tetris
+def get_current_piece():
+    return iterator.current_piece.copy() if iterator.current_piece else None
+
+def get_next_piece():
+    return iterator.next_piece
+
+def get_board():
+    return [row[:] for row in iterator.board]  # Deep copy
+
+def is_valid_position(piece):
+    return iterator.is_valid_position(piece)
+
+def lock_piece(piece):
+    return iterator.lock_piece(piece)
+
+def clear_lines():
+    return iterator.clear_lines()
+
+""")
             
-            # Update current piece with the final position
-            self.current_piece = piece
+            # Add the extracted code
+            f.write(code)
         
-        # Create updated board after movement
-        self.create_simulated_tetris_board()
-        
-        # Take a post-execution screenshot of the updated state
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        post_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_post_execution_{self.iteration}")
-        self.simulated_board.save(post_screenshot_path + ".png")  # Still need .png for PIL to save properly
-        self.log_message(f"Post-execution screenshot saved to: {post_screenshot_path}")
-        
-        # Also execute the code using PyAutoGUI for real-game scenarios
+        # Execute the code
         try:
-            # Add necessary imports
-            if "import pyautogui" not in code:
-                code = "import pyautogui\nimport time\n" + code
+            result = None
+            error = None
             
-            # Execute the code (only for real game mode)
-            if not self.use_simulated_board:
-                exec(code, {"pyautogui": pyautogui, "time": time})
-            
-            self.log_message("Code execution completed.")
-            
-        except Exception as e:
-            self.log_message(f"Error executing code: {str(e)}")
-            traceback.print_exc()
+            with open(temp_filename, 'r') as f:
+                code_content = f.read()
+                
+            try:
+                # Create local namespace with self as iterator
+                local_namespace = {"iterator": self}
+                
+                # Execute the code
+                exec(code_content, {}, local_namespace)
+                
+            except Exception as e:
+                error = str(e)
+                self.log_message(f"Error executing code: {error}")
+                traceback.print_exc()
+        
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(temp_filename)
+            except:
+                pass
+        
+        # Save post-execution screenshot
+        post_screenshot_path = os.path.join(
+            self.screenshots_dir, 
+            f"post_execution_{self.iteration}_{time.strftime('%Y%m%d_%H%M%S')}.png"
+        )
+        
+        if self.simulated_mode:
+            # Recreate the board image with updated state
+            self.create_simulated_tetris_board(
+                board_state=self.board,
+                current_piece=self.current_piece,
+                next_piece=self.next_piece
+            )
+            if self.simulated_board:
+                self.simulated_board.save(post_screenshot_path)
+                self.log_message(f"Saved post-execution screenshot: {os.path.basename(post_screenshot_path)}")
+            else:
+                self.log_message("Cannot save post-execution screenshot: simulated board is None")
+        else:
+            # For real Tetris, take another screenshot
+            screenshot = self.capture_screenshot()
+            if screenshot:
+                screenshot.save(post_screenshot_path)
+                self.log_message(f"Saved post-execution screenshot: {os.path.basename(post_screenshot_path)}")
+            else:
+                self.log_message("Failed to capture post-execution screenshot")
+        
+        if error:
+            return error
+        return None
     
     def is_valid_position(self, piece):
         """Check if the piece position is valid (not outside board or colliding)"""
@@ -779,7 +784,7 @@ Here's the current Tetris game state image:
                 return False
                 
             # Collision with existing blocks
-            if board_y >= 0 and self.board_state[board_y][board_x] > 0:
+            if board_y >= 0 and self.board[board_y][board_x] > 0:
                 return False
                 
         return True
@@ -801,7 +806,7 @@ Here's the current Tetris game state image:
             
             # Only place if within board
             if 0 <= board_x < 10 and 0 <= board_y < 20:
-                self.board_state[board_y][board_x] = color_index
+                self.board[board_y][board_x] = color_index
     
     def clear_lines(self):
         """Clear completed lines and shift the board down"""
@@ -809,15 +814,15 @@ Here's the current Tetris game state image:
         
         # Find completed lines
         for y in range(20):
-            if all(cell > 0 for cell in self.board_state[y]):
+            if all(cell > 0 for cell in self.board[y]):
                 lines_to_clear.append(y)
         
         # Clear lines from bottom to top
         for y in sorted(lines_to_clear, reverse=True):
             # Remove the completed line
-            self.board_state.pop(y)
+            self.board.pop(y)
             # Add a new empty line at the top
-            self.board_state.insert(0, [0 for _ in range(10)])
+            self.board.insert(0, [0 for _ in range(10)])
             
         return len(lines_to_clear)
 
@@ -832,7 +837,7 @@ Here's the current Tetris game state image:
             PIL.Image: 简单的Tetris棋盘图像
         """
         # 创建空棋盘 (没有任何已放置的方块)
-        self.board_state = [[0 for _ in range(10)] for _ in range(20)]
+        self.board = [[0 for _ in range(10)] for _ in range(20)]
         
         # 当前方块在顶部中间
         self.current_piece = {
@@ -847,7 +852,7 @@ Here's the current Tetris game state image:
         
         # 创建并返回模拟棋盘
         return self.create_simulated_tetris_board(
-            board_state=self.board_state,
+            board_state=self.board,
             current_piece=self.current_piece,
             next_piece=self.next_piece
         )
@@ -856,24 +861,28 @@ Here's the current Tetris game state image:
         """Main loop"""
         self.log_message("=== Starting Tetris Claude Iterator ===")
         self.log_message(f"Output directory: {self.session_dir}")
-        self.log_message("Press space to start...")
         
-        try:
-            # Wait for initial space press
+        # Show startup message based on auto-iterations setting
+        if self.max_auto_spaces > 0:
+            self.log_message(f"Auto-space enabled for {self.max_auto_spaces} iterations. Starting automatically...")
+            # Small delay to give time to read the message
+            time.sleep(2)
+        else:
+            self.log_message("Press space to start...")
+            # Wait for initial space press if auto-space is disabled
             if not self.wait_for_space_key():
                 return
-            
+
+        try:
             while not self.stop_flag:
                 try:
                     self.iteration += 1
                     self.log_message(f"\n=== Iteration {self.iteration} ===")
                     
                     # Capture screenshot
-                    screenshot_path, screenshot = self.capture_screenshot()
+                    screenshot = self.capture_screenshot()
                     if screenshot is None:
-                        self.log_message("Failed to capture screenshot. Waiting for next iteration...")
-                        if not self.wait_for_space_key():
-                            break
+                        self.log_message("Failed to capture screenshot. Retrying...")
                         continue
                     
                     # Call Claude API
@@ -928,82 +937,45 @@ def cleanup_txt_files():
         print(f"Error cleaning up .txt files: {e}")
 
 def main():
-    """Main function"""
-    # Check if the script is run directly
-    if __name__ != "__main__":
-        return
-    
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Tetris Claude Iterator - Control Tetris with Claude API")
-    parser.add_argument("--window", type=str, help="Manually specify window position as 'x,y,width,height'")
-    parser.add_argument("--model", type=str, default=MODEL, help=f"Claude model to use (default: {MODEL})")
-    parser.add_argument("--output-dir", type=str, default=OUTPUT_DIR, help=f"Output directory (default: {OUTPUT_DIR})")
-    parser.add_argument("--window-title", type=str, default=TETRIS_WINDOW_TITLE, 
-                        help=f"Window title to look for (default: '{TETRIS_WINDOW_TITLE}')")
-    
-    # Simulation mode options
-    parser.add_argument("--no-simulate", action="store_true", help="Don't use simulated board (capture real screenshots)")
-    parser.add_argument("--complex", action="store_true", help="Use complex board with multiple pieces (not simple)")
-    parser.add_argument("--piece", type=str, default='T', choices=['I', 'J', 'L', 'O', 'S', 'T', 'Z'], 
-                        help="Piece type for simple simulation (default: T)")
-    parser.add_argument("--fill", type=int, default=30, help="Fill percentage for complex board (default: 30)")
-    parser.add_argument("--height", type=int, default=15, help="Maximum height for complex board (default: 15)")
-    
-    # Output options
-    parser.add_argument("--save-responses", action="store_true", help="Save API responses to files")
-    parser.add_argument("--cleanup", action="store_true", help="Remove any existing .txt files in the output directory")
+    """Main function to parse args and run the iterator"""
+    parser = argparse.ArgumentParser(description='Tetris Claude Iterator')
+    parser.add_argument('--model', type=str, help='Claude model to use (default: claude-3-opus-20240229)')
+    parser.add_argument('--output', type=str, help='Output directory')
+    parser.add_argument('--window', type=str, help='Window title to capture')
+    parser.add_argument('--no-simulate', action='store_true', help='Disable simulated board mode')
+    parser.add_argument('--save-responses', action='store_true', help='Save API responses to JSON files')
+    parser.add_argument('--auto-iterations', type=int, default=4, help='Number of automatic iterations before requiring manual input (default: 4)')
     
     args = parser.parse_args()
     
-    # Clean up .txt files if requested
-    if args.cleanup:
-        cleanup_txt_files()
+    # Configure from environment variables if not provided as args
+    model = args.model or os.environ.get('CLAUDE_MODEL', 'claude-3-opus-20240229')
+    output_dir = args.output or os.environ.get('OUTPUT_DIR', '.')
+    window_title = args.window or os.environ.get('TETRIS_WINDOW_TITLE', None)
     
-    # Create and run the iterator with custom settings
+    # Create and run the iterator
     iterator = TetrisClaudeIterator(
-        model=args.model, 
-        output_dir=args.output_dir, 
-        window_title=args.window_title,
+        model=model,
+        output_dir=output_dir,
+        window_title=window_title,
         save_responses=args.save_responses
     )
     
-    # Set manual window position if provided
-    if args.window:
-        try:
-            x, y, width, height = map(int, args.window.split(','))
-            iterator.manual_window_position = (x, y, width, height)
-            print(f"Using manual window position: {iterator.manual_window_position}")
-        except (ValueError, TypeError) as e:
-            print(f"Error parsing window position: {e}")
-            print("Format should be: x,y,width,height (e.g., 0,0,500,600)")
-            return
+    # Set maximum number of auto-iterations if specified
+    if args.auto_iterations is not None:
+        iterator.max_auto_spaces = args.auto_iterations
+        if args.auto_iterations == 0:
+            print("Auto-space feature disabled. Manual input required for each iteration.")
+        else:
+            print(f"Auto-space feature enabled for {args.auto_iterations} iterations.")
     
-    # Enable simulation mode based on command-line options
     if args.no_simulate:
         print("Using real screenshots instead of simulated board")
-        iterator.use_simulated_board = False
+        iterator.simulated_mode = False
     else:
         # Default is to use simple simulated board
-        if args.complex:
-            print("Using complex simulated Tetris board with multiple pieces")
-            # Generate random board state
-            board, current_piece, next_piece = iterator.simulate_random_board_state(
-                fill_percentage=args.fill,
-                max_height=args.height
-            )
-            
-            # Create simulated board
-            iterator.create_simulated_tetris_board(
-                board_state=board,
-                current_piece=current_piece,
-                next_piece=next_piece
-            )
-        else:
-            print(f"Using simple simulated Tetris board with a single {args.piece} piece")
-            # Create simple board with just one piece
-            iterator.create_simple_tetris_board(piece_type=args.piece)
+        pass
     
-    # Run the iterator
     iterator.run()
 
 
