@@ -10,10 +10,10 @@ Requirements:
 - moviepy (optional, for MP4 creation)
 
 Usage examples:
-    # Create a GIF with default settings
+    # Create a GIF with default settings (works with NumPy 1.24.4)
     python create_tetris_animation.py --session session_20250308_020339 --type gif
     
-    # Create an MP4 with custom settings (requires moviepy)
+    # Create an MP4 with custom settings (requires moviepy and NumPy>=1.25.0)
     python create_tetris_animation.py --session session_20250308_020339 --type mp4 --fps 2 --mode post
     
     # Options for mode: 
@@ -22,6 +22,13 @@ Usage examples:
     # - post: only post_execution images
     # - pre-post: alternating pre and post execution images
     # - all: all images in order
+    
+IMPORTANT VERSION NOTE:
+    There's a conflict between OpenCV (used by the Tetris simulator) and MoviePy:
+    - OpenCV requires NumPy 1.x
+    - MoviePy requires NumPy>=1.25.0
+    
+    Use the helper scripts run_tetris.bat or run_tetris.sh for proper dependency management.
 """
 
 import os
@@ -41,7 +48,8 @@ try:
 except ImportError:
     print("Note: MoviePy not found. MP4 output will not be available.")
     print("To enable MP4 output, install MoviePy with:")
-    print("pip install moviepy")
+    print("pip install numpy>=1.25.0 moviepy")
+    print("IMPORTANT: This will make the Tetris simulator unusable until you reinstall numpy==1.24.4")
     print("Using Pillow for GIF creation only.\n")
 
 # Default values
@@ -259,7 +267,7 @@ def create_animation(image_paths: List[str], output_path: str, fps: int = DEFAUL
         if output_path.endswith('.mp4'):
             if not MOVIEPY_AVAILABLE:
                 print("Error: MoviePy is required for MP4 creation.")
-                print("Please install it with: pip install moviepy")
+                print("Please install it with: pip install numpy>=1.25.0 moviepy")
                 print("Converting to GIF instead...")
                 output_path = output_path.replace('.mp4', '.gif')
             else:
@@ -302,8 +310,18 @@ def main():
     # If MP4 is requested but MoviePy is not available, switch to GIF
     if args.type == "mp4" and not MOVIEPY_AVAILABLE:
         print("Warning: MP4 output requires MoviePy, which is not installed.")
-        print("Switching to GIF output.")
+        print("To enable MP4 creation, run: pip install numpy>=1.25.0 moviepy")
+        print("NOTE: This will make the Tetris simulator unusable until you reinstall numpy==1.24.4")
+        print("Switching to GIF output for now.")
         args.type = "gif"
+    
+    # Check if creating MP4 and give NumPy warning
+    if args.type == "mp4" and MOVIEPY_AVAILABLE:
+        print("IMPORTANT: Creating MP4 requires NumPy>=1.25.0, which makes the Tetris simulator")
+        print("           unusable until you reinstall numpy==1.24.4")
+        print("To restore Tetris simulator functionality after creating an MP4:")
+        print("    pip install numpy==1.24.4")
+        print("")
     
     # Locate the game_logs directory based on where the script is run from
     script_dir = os.path.dirname(os.path.abspath(__file__))

@@ -1,5 +1,17 @@
-# Core dependencies
-numpy==1.24.4  # Older version for compatibility with OpenCV
+# ======================================================
+# Tetris Claude Iterator Requirements
+# ======================================================
+# IMPORTANT: There is a version conflict between OpenCV (used by PyAutoGUI) 
+# and MoviePy. OpenCV requires NumPy 1.x while MoviePy requires NumPy>=1.25.0.
+#
+# OPTIONS:
+# 1. For Tetris simulator only: Use NumPy 1.24.4 (default below)
+# 2. For Animation with MoviePy: Comment out NumPy below and uncomment MoviePy
+#    Then run: pip install numpy>=1.25.0 moviepy
+# ======================================================
+
+# Core dependencies (for Tetris simulator)
+numpy==1.24.4  # Required for OpenCV compatibility (PyAutoGUI)
 pillow>=10.0.0
 pyautogui>=0.9.53
 pynput>=1.7.6
@@ -9,5 +21,26 @@ python-dotenv>=1.0.0
 anthropic>=0.10.0
 openai>=1.10.0
 
-# Optional dependencies for animation
-# moviepy>=2.0.0  # Uncomment if needed for MP4 creation 
+# Optional: For animation creation
+# OPTION 1: GIF only (works with NumPy 1.24.4)
+# - No additional packages needed, uses Pillow
+
+# OPTION 2: MP4 creation (requires NumPy>=1.25.0)
+# - Uncomment the line below and run: pip install numpy>=1.25.0 moviepy
+# - NOTE: This will break the Tetris simulator!
+# moviepy>=2.0.0
+
+# ======================================================
+# USAGE SCENARIO EXAMPLES:
+# 
+# 1. Run Tetris simulator:
+#    - Keep numpy==1.24.4
+#
+# 2. Create GIF animations:
+#    - Keep numpy==1.24.4 (GIFs work with Pillow)
+#
+# 3. Create MP4 animations:
+#    - First run Tetris simulator with numpy==1.24.4
+#    - Then install numpy>=1.25.0 and moviepy
+#    - Run the animation creator
+# ====================================================== 
