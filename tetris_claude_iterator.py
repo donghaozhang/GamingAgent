@@ -162,9 +162,9 @@ The speed pieces drop is at around ~0.75s/grid block.
 
 ### Strategies and Caveats:
 0. Clear the horizontal rows as soon as possible.
+1. If you see a chance to clear lines, do it
 2. Prioritize keeping the stack flat and balanced
-1. Avoid creating holes you know you can rotate piece to match
-3. If you see a chance to clear lines, do it
+3. Avoid creating holes 
 4. Only control the current piece visible at the top
 
 ### Output Format:
@@ -811,12 +811,17 @@ def clear_lines():
 class SimulatedPyAutoGUI:
     def __init__(self, iterator):
         self.iterator = iterator
+        # Debug flag for tracking changes to the game state
+        self.changes_made = False
     
     def press(self, key, presses=1):
         \"\"\"Simulate pressing a key, possibly multiple times\"\"\"
         # Only process if we have a current piece
         if not self.iterator.current_piece:
             return
+        
+        # Debug message
+        print(f"Simulated press: {key} x{presses}")
         
         # Execute the press the specified number of times
         for _ in range(presses):
@@ -832,6 +837,8 @@ class SimulatedPyAutoGUI:
                     piece['x'] += 1  # Undo if invalid
                 else:
                     self.iterator.current_piece = piece
+                    self.changes_made = True
+                    print(f"Moved left to x={piece['x']}, y={piece['y']}")
                     
             elif key == "right":
                 # Move right
@@ -841,6 +848,8 @@ class SimulatedPyAutoGUI:
                     piece['x'] -= 1  # Undo if invalid
                 else:
                     self.iterator.current_piece = piece
+                    self.changes_made = True
+                    print(f"Moved right to x={piece['x']}, y={piece['y']}")
                     
             elif key == "up" or key == "rotate":
                 # Rotate piece (clockwise)
@@ -862,6 +871,8 @@ class SimulatedPyAutoGUI:
                 
                 # Update piece
                 self.iterator.current_piece = piece
+                self.changes_made = True
+                print(f"Rotated to rotation={piece['rotation']}")
                     
             elif key == "down":
                 # Move down
@@ -871,33 +882,54 @@ class SimulatedPyAutoGUI:
                     piece['y'] -= 1  # Undo if invalid
                 else:
                     self.iterator.current_piece = piece
+                    self.changes_made = True
+                    print(f"Moved down to x={piece['x']}, y={piece['y']}")
                     
             elif key == "space":
                 # Hard drop - move down until collision
+                drop_distance = 0
                 while self.iterator.is_valid_position(piece):
                     piece['y'] += 1
+                    drop_distance += 1
                 
                 # Move back up one step
                 piece['y'] -= 1
+                drop_distance -= 1
+                
+                print(f"Hard dropped {drop_distance} spaces to y={piece['y']}")
                 
                 # Lock the piece on the board
                 self.iterator.lock_piece(piece)
+                self.changes_made = True
                 
                 # Clear any completed lines
-                self.iterator.clear_lines()
+                lines_cleared = self.iterator.clear_lines()
+                if lines_cleared > 0:
+                    print(f"Cleared {lines_cleared} lines")
                 
                 # Generate a new piece
                 piece_types = ['I', 'J', 'L', 'O', 'S', 'T', 'Z']
+                
+                # Use the next piece as the current piece
+                if self.iterator.next_piece and 'type' in self.iterator.next_piece:
+                    next_type = self.iterator.next_piece['type']
+                else:
+                    next_type = random.choice(piece_types)
+                    
                 self.iterator.current_piece = {
-                    'type': self.iterator.next_piece['type'] if self.iterator.next_piece else random.choice(piece_types),
-                    'x': 4,
-                    'y': 0,
+                    'type': next_type,
+                    'x': 4,  # Center of the board
+                    'y': 0,  # Top of the board
                     'rotation': 0
                 }
+                
+                # Generate a new next piece
                 self.iterator.next_piece = {'type': random.choice(piece_types)}
+                print(f"New piece: {self.iterator.current_piece['type']}, Next piece: {self.iterator.next_piece['type']}")
             
     def sleep(self, seconds):
         \"\"\"Simulate waiting\"\"\"
+        # We can just pass here for simulation
         pass
 
 # Use simulated or real pyautogui based on mode
@@ -928,6 +960,13 @@ pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautog
                 # Execute the code
                 exec(code_content, global_namespace, local_namespace)
                 
+                # After execution, force an update of the board image to reflect the changes
+                if self.simulated_mode:
+                    # Get the simualtedPyAutoGUI instance from the local namespace if available
+                    simulated_pyautogui = local_namespace.get('pyautogui')
+                    if hasattr(simulated_pyautogui, 'changes_made') and simulated_pyautogui.changes_made:
+                        self.log_message("Changes made to game state. Updating board image...")
+                
             except Exception as e:
                 error = str(e)
                 self.log_message(f"Error executing code: {error}")
@@ -947,14 +986,33 @@ pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautog
         )
         
         if self.simulated_mode:
-            # Recreate the board image with updated state
+            # Force recreate the board image with the latest state
             self.create_simulated_tetris_board(
                 board_state=self.board,
                 current_piece=self.current_piece,
                 next_piece=self.next_piece
             )
+            
             if self.simulated_board:
-                self.simulated_board.save(post_screenshot_path)
+                # Create a copy of the board image to avoid modifying the original
+                post_image = self.simulated_board.copy()
+                
+                # Add text to indicate this is the post-execution state
+                try:
+                    draw = ImageDraw.Draw(post_image)
+                    try:
+                        font = ImageFont.truetype("arial.ttf", 16)
+                    except:
+                        font = ImageFont.load_default()
+                        
+                    # Add "AFTER MOVE" text at the top of the game area
+                    draw.rectangle([(5, 5), (150, 25)], fill=(0, 0, 0))
+                    draw.text((10, 7), "AFTER MOVE", fill=(255, 255, 0), font=font)
+                except Exception as e:
+                    self.log_message(f"Error adding text to post image: {e}")
+                
+                # Save the annotated image
+                post_image.save(post_screenshot_path)
                 self.log_message(f"Saved post-execution screenshot: {os.path.basename(post_screenshot_path)}")
             else:
                 self.log_message("Cannot save post-execution screenshot: simulated board is None")
@@ -1117,7 +1175,9 @@ pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautog
                 self.board[board_y][board_x] = color_index
     
     def clear_lines(self):
-        """Clear completed lines and shift the board down"""
+        """
+        Clear completed lines and return the number of lines cleared
+        """
         lines_to_clear = []
         
         # Find completed lines
@@ -1131,6 +1191,9 @@ pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautog
             self.board.pop(y)
             # Add a new empty line at the top
             self.board.insert(0, [0 for _ in range(10)])
+            
+        if lines_to_clear:
+            self.log_message(f"Cleared {len(lines_to_clear)} lines at rows: {', '.join(map(str, lines_to_clear))}")
             
         return len(lines_to_clear)
 
