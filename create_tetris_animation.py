@@ -2,387 +2,287 @@
 """
 Tetris Animation Creator
 
-This script combines Tetris simulation images into an MP4 or GIF animation.
-It can use simulated_iter, pre_execution, or post_execution images.
+This script creates animations from Tetris screenshots.
+It can create GIFs or video files from a series of screenshots.
+
+Usage:
+    python create_tetris_animation.py --session SESSION_DIR [--output OUTPUT_FILE] [--type gif|mp4] [--fps FPS] [--mode all|before|after]
 
 Requirements:
-- pillow (for image processing and GIF creation)
-- moviepy (optional, for MP4 creation)
-
-Usage examples:
-    # Create a GIF with default settings (works with NumPy 1.24.4)
-    python create_tetris_animation.py --session session_20250308_020339 --type gif
-    
-    # Create an MP4 with custom settings (requires moviepy and NumPy>=1.25.0)
-    python create_tetris_animation.py --session session_20250308_020339 --type mp4 --fps 2 --mode post
-    
-    # Options for mode: 
-    # - sim: only simulated_iter images
-    # - pre: only pre_execution images
-    # - post: only post_execution images
-    # - pre-post: alternating pre and post execution images
-    # - all: all images in order
-    
-IMPORTANT VERSION NOTE:
-    There's a conflict between OpenCV (used by the Tetris simulator) and MoviePy:
-    - OpenCV requires NumPy 1.x
-    - MoviePy requires NumPy>=1.25.0
-    
-    Use the helper scripts run_tetris.bat or run_tetris.sh for proper dependency management.
+    - PIL (Pillow)
+    - moviepy (optional, for video creation)
 """
 
 import os
-import re
 import sys
 import argparse
-import time
-from pathlib import Path
+import glob
+from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
-from typing import List, Tuple, Optional
 
-# Check for optional dependencies
-MOVIEPY_AVAILABLE = False
+# Optional import for video creation
 try:
-    from moviepy.editor import ImageSequenceClip
+    import moviepy.editor as mpy
     MOVIEPY_AVAILABLE = True
 except ImportError:
-    print("Note: MoviePy not found. MP4 output will not be available.")
-    print("To enable MP4 output, install MoviePy with:")
-    print("pip install numpy>=1.25.0 moviepy")
-    print("IMPORTANT: This will make the Tetris simulator unusable until you reinstall numpy==1.24.4")
-    print("Using Pillow for GIF creation only.\n")
+    MOVIEPY_AVAILABLE = False
 
-# Default values
-DEFAULT_FPS = 1  # Frames per second
-DEFAULT_MODE = "sim"  # Default to simulated_iter images
-DEFAULT_OUTPUT_TYPE = "gif"  # Default to GIF since it doesn't require moviepy
-DEFAULT_OUTPUT_FOLDER = "animations"
-
-def sort_by_iteration(filename: str) -> Tuple[int, int]:
+def find_images(session_dir, mode="all"):
     """
-    Extract iteration number and timestamp for sorting.
-    Returns (iteration number, timestamp) tuple.
-    """
-    # Extract iteration number
-    iter_match = re.search(r'iter_(\d+)', filename)
-    exec_match = re.search(r'execution_(\d+)', filename)
-    
-    if iter_match:
-        iter_num = int(iter_match.group(1))
-    elif exec_match:
-        iter_num = int(exec_match.group(1))
-    else:
-        iter_num = 0
-    
-    # Extract timestamp for secondary sorting
-    time_match = re.search(r'(\d{8})_(\d{6})', filename)
-    if time_match:
-        # Convert to an integer for comparison
-        timestamp = int(time_match.group(1) + time_match.group(2))
-    else:
-        timestamp = 0
-        
-    return (iter_num, timestamp)
-
-def find_images(session_dir: str, mode: str) -> List[str]:
-    """
-    Find relevant images based on the selected mode.
+    Find all screenshot images in the session directory.
     
     Args:
         session_dir: Path to the session directory
-        mode: Which images to use (sim, pre, post, pre-post, all)
-    
+        mode: 'all', 'before', or 'after' to filter which images to include
+        
     Returns:
-        List of image paths sorted by iteration
+        List of image paths sorted by timestamp
     """
+    # Ensure screenshots directory exists
     screenshots_dir = os.path.join(session_dir, "screenshots")
     if not os.path.exists(screenshots_dir):
-        raise FileNotFoundError(f"Screenshots directory not found: {screenshots_dir}")
-    
-    # Get all PNG files
-    all_files = [f for f in os.listdir(screenshots_dir) if f.endswith('.png')]
-    
-    # Filter based on mode
-    if mode == "sim":
-        files = [f for f in all_files if "simulated_iter" in f]
-    elif mode == "pre":
-        files = [f for f in all_files if "pre_execution" in f]
-    elif mode == "post":
-        files = [f for f in all_files if "post_execution" in f]
-    elif mode == "pre-post":
-        # Get pre and post pairs, sorted by iteration
-        pre_files = [f for f in all_files if "pre_execution" in f]
-        post_files = [f for f in all_files if "post_execution" in f]
+        screenshots_dir = session_dir  # Try the session dir itself if no screenshots subdir
         
-        # Sort each list
-        pre_files.sort(key=sort_by_iteration)
-        post_files.sort(key=sort_by_iteration)
+    # Find all PNG files
+    if mode == "all":
+        pattern = os.path.join(screenshots_dir, "*.png")
+    elif mode == "before":
+        pattern = os.path.join(screenshots_dir, "screenshot_*.png")
+    elif mode == "after":
+        pattern = os.path.join(screenshots_dir, "post_execution_*.png")
+    else:
+        raise ValueError(f"Invalid mode: {mode}")
         
-        # Create alternating list
-        files = []
-        for pre, post in zip(pre_files, post_files):
-            files.append(pre)
-            files.append(post)
-    else:  # "all"
-        files = all_files
+    # Get all matching files and sort them
+    image_paths = glob.glob(pattern)
     
-    # Sort by iteration number
-    files.sort(key=sort_by_iteration)
+    # Sort by iteration number (embedded in filename)
+    def get_iteration(path):
+        filename = os.path.basename(path)
+        parts = filename.split('_')
+        # Try to extract iteration number
+        try:
+            if 'post' in filename:
+                return int(parts[2])  # post_execution_NUMBER_timestamp.png
+            else:
+                return int(parts[1])  # screenshot_NUMBER_timestamp.png
+        except (IndexError, ValueError):
+            # If can't extract iteration, sort by full path (fallback)
+            return float('inf')  # Put at end if we can't extract iteration
     
-    # Return full paths
-    return [os.path.join(screenshots_dir, f) for f in files]
+    return sorted(image_paths, key=get_iteration)
 
-def add_frame_labels(image_paths: List[str], temp_dir: str = None) -> List[str]:
+def add_frame_labels(image_paths):
     """
-    Add frame number and type labels to each image.
+    Add labels to frames to indicate iteration number and type.
     
     Args:
-        image_paths: List of image paths
-        temp_dir: Directory to save labeled images (creates one if None)
+        image_paths: List of paths to images
     
     Returns:
-        List of paths to labeled images
+        List of PIL Image objects with labels
     """
-    # Create temp directory if needed
-    if temp_dir is None:
-        temp_dir = os.path.join(os.path.dirname(image_paths[0]), "temp_frames")
+    frames = []
     
-    os.makedirs(temp_dir, exist_ok=True)
-    
-    labeled_paths = []
-    
-    for i, img_path in enumerate(image_paths):
-        # Get image type
-        if "simulated_iter" in img_path:
-            frame_type = "Simulated"
-        elif "pre_execution" in img_path:
-            frame_type = "Pre-Execution"
-        elif "post_execution" in img_path:
-            frame_type = "Post-Execution"
-        else:
-            frame_type = "Frame"
-        
-        # Extract iteration number
-        iter_match = re.search(r'iter_(\d+)', img_path)
-        exec_match = re.search(r'execution_(\d+)', img_path)
-        
-        if iter_match:
-            iter_num = iter_match.group(1)
-        elif exec_match:
-            iter_num = exec_match.group(1)
-        else:
-            iter_num = str(i+1)
-        
-        # Open and add label
-        img = Image.open(img_path)
-        draw = ImageDraw.Draw(img)
-        
-        # Prepare font
+    for i, path in enumerate(image_paths):
         try:
-            font = ImageFont.truetype("arial.ttf", 16)
-        except:
-            font = ImageFont.load_default()
-        
-        # Draw label at the bottom
-        label = f"Frame {i+1}: {frame_type} {iter_num}"
-        
-        # The textsize method was deprecated in Pillow 10.0.0
-        # Try the new method first, then fall back to the old one
-        try:
-            bbox = draw.textbbox((0, 0), label, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-        except AttributeError:
-            # Fall back to the old method for older Pillow versions
-            text_width, text_height = draw.textsize(label, font=font) if hasattr(draw, 'textsize') else (150, 20)
-        
-        draw.rectangle(
-            [(0, img.height - text_height - 10), (text_width + 10, img.height)],
-            fill=(0, 0, 0, 180)
-        )
-        draw.text((5, img.height - text_height - 5), label, fill=(255, 255, 255), font=font)
-        
-        # Save labeled image
-        output_path = os.path.join(temp_dir, f"frame_{i:03d}.png")
-        img.save(output_path)
-        labeled_paths.append(output_path)
+            # Open the image
+            img = Image.open(path)
+            
+            # Create a copy for drawing
+            draw_img = img.copy()
+            draw = ImageDraw.Draw(draw_img)
+            
+            # Get iteration number from filename
+            filename = os.path.basename(path)
+            parts = filename.split('_')
+            
+            # Determine if this is a 'before' or 'after' screenshot
+            is_post = 'post' in filename
+            
+            # Try to extract iteration number
+            try:
+                if is_post:
+                    iter_num = int(parts[2])  # post_execution_NUMBER_timestamp.png
+                else:
+                    iter_num = int(parts[1])  # screenshot_NUMBER_timestamp.png
+            except (IndexError, ValueError):
+                iter_num = i + 1  # Use position in sequence as fallback
+            
+            # Add label with frame number and type
+            label = f"Iteration {iter_num}: {'After Move' if is_post else 'Before Move'}"
+            
+            # Try to load font, fall back to default if needed
+            try:
+                font = ImageFont.truetype("arial.ttf", 16)
+            except:
+                font = ImageFont.load_default()
+            
+            # Add semi-transparent background for text
+            text_width = len(label) * 8  # Approximate width
+            text_height = 20
+            draw.rectangle([(10, 10), (10 + text_width, 10 + text_height)], fill=(0, 0, 0, 128))
+            
+            # Draw text
+            draw.text((15, 12), label, fill=(255, 255, 255), font=font)
+            
+            # Add to frames
+            frames.append(draw_img)
+            
+        except Exception as e:
+            print(f"Error processing {path}: {e}")
+            # If there's an error, try to add the original image without modification
+            try:
+                frames.append(Image.open(path))
+            except:
+                pass
     
-    return labeled_paths
+    return frames
 
-def create_gif_with_pillow(image_paths: List[str], output_path: str, fps: int = DEFAULT_FPS):
+def create_gif(frames, output_path, fps=2):
     """
-    Create a GIF animation using Pillow.
+    Create a GIF from frames.
     
     Args:
-        image_paths: List of paths to frames
+        frames: List of PIL Image objects
         output_path: Path to save the GIF
         fps: Frames per second
     """
-    print(f"Creating GIF animation with Pillow ({len(image_paths)} frames)...")
-    
-    # Open all images
-    images = [Image.open(img_path) for img_path in image_paths]
-    
-    # Calculate duration in milliseconds
+    # Determine frame duration in milliseconds
     duration = int(1000 / fps)
     
-    # Save as animated GIF
-    images[0].save(
-        output_path,
-        save_all=True,
-        append_images=images[1:],
-        optimize=False,
-        duration=duration,
-        loop=0  # Loop forever
-    )
-    
-    # Close all images
-    for img in images:
-        img.close()
+    # Save as GIF
+    if frames:
+        # Get the size of the first frame
+        size = frames[0].size
+        
+        # Ensure all frames are the same size
+        uniform_frames = []
+        for frame in frames:
+            if frame.size != size:
+                # Resize if needed
+                frame = frame.resize(size, Image.LANCZOS)
+            uniform_frames.append(frame)
+        
+        # Save animated GIF
+        uniform_frames[0].save(
+            output_path,
+            save_all=True,
+            append_images=uniform_frames[1:],
+            optimize=True,
+            duration=duration,
+            loop=0  # Loop forever
+        )
+        return True
+    else:
+        print("No frames to create GIF")
+        return False
 
-def create_animation(image_paths: List[str], output_path: str, fps: int = DEFAULT_FPS):
+def create_video(frames, output_path, fps=5):
     """
-    Create an animation (MP4 or GIF) from the images.
+    Create a video from frames using moviepy (if available).
     
     Args:
-        image_paths: List of image paths
-        output_path: Path to save the animation
+        frames: List of PIL Image objects
+        output_path: Path to save the video
         fps: Frames per second
     """
-    # Create directory if it doesn't exist
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    if not MOVIEPY_AVAILABLE:
+        print("Error: moviepy not installed. Cannot create video.")
+        return False
     
-    # Check if we have images
-    if not image_paths:
-        print("No images found!")
-        return
+    if not frames:
+        print("No frames to create video")
+        return False
     
-    print(f"Creating animation with {len(image_paths)} frames at {fps} fps...")
+    # Convert PIL images to numpy arrays
+    import numpy as np
+    frame_arrays = [np.array(frame) for frame in frames]
     
-    # Create labeled frames
-    labeled_frames = add_frame_labels(image_paths)
-    
-    # Create animation based on output type
     try:
-        if output_path.endswith('.mp4'):
-            if not MOVIEPY_AVAILABLE:
-                print("Error: MoviePy is required for MP4 creation.")
-                print("Please install it with: pip install numpy>=1.25.0 moviepy")
-                print("Converting to GIF instead...")
-                output_path = output_path.replace('.mp4', '.gif')
-            else:
-                # Create animation with MoviePy
-                clip = ImageSequenceClip(labeled_frames, fps=fps)
-                clip.write_videofile(output_path, codec='libx264', fps=fps)
-                print(f"MP4 animation saved to: {output_path}")
+        # Create video clip
+        clip = mpy.ImageSequenceClip(frame_arrays, fps=fps)
         
-        if output_path.endswith('.gif'):
-            # Create GIF with Pillow
-            create_gif_with_pillow(labeled_frames, output_path, fps)
-            print(f"GIF animation saved to: {output_path}")
+        # Write to file
+        clip.write_videofile(output_path, fps=fps, codec='libx264')
+        return True
     except Exception as e:
-        print(f"Error creating animation: {e}")
-        print("Files were not deleted due to error.")
-        return
+        print(f"Error creating video: {e}")
+        return False
+
+def create_animation(image_paths, output_path, fps=2, animation_type="gif"):
+    """
+    Create an animation from a list of image paths.
     
-    # Clean up temp frames
-    try:
-        temp_dir = os.path.dirname(labeled_frames[0])
-        for frame in labeled_frames:
-            os.remove(frame)
-        os.rmdir(temp_dir)
-    except Exception as e:
-        print(f"Warning: Could not clean up temporary files: {e}")
+    Args:
+        image_paths: List of paths to images
+        output_path: Path to save the animation
+        fps: Frames per second
+        animation_type: 'gif' or 'mp4'
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    # Create list of frames with labels
+    frames = add_frame_labels(image_paths)
+    
+    if not frames:
+        print("No frames to process")
+        return False
+    
+    # Create output directory if it doesn't exist
+    output_dir = os.path.dirname(output_path)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Create animation based on type
+    if animation_type.lower() == "gif":
+        return create_gif(frames, output_path, fps)
+    elif animation_type.lower() == "mp4":
+        if not MOVIEPY_AVAILABLE:
+            print("Warning: moviepy not available, creating GIF instead")
+            # Change extension to .gif
+            output_path = os.path.splitext(output_path)[0] + ".gif"
+            return create_gif(frames, output_path, fps)
+        else:
+            return create_video(frames, output_path, fps)
+    else:
+        print(f"Unsupported animation type: {animation_type}")
+        return False
 
 def main():
-    """Main function to parse args and create the animation"""
-    parser = argparse.ArgumentParser(description="Create an animation from Tetris simulation images")
-    
-    parser.add_argument("--session", required=True, help="Session directory name (e.g., session_20250308_020339)")
-    parser.add_argument("--output", help="Output file path (default: auto-generated)")
-    parser.add_argument("--type", choices=["mp4", "gif"], default=DEFAULT_OUTPUT_TYPE, help="Output file type")
-    parser.add_argument("--fps", type=int, default=DEFAULT_FPS, help="Frames per second")
-    parser.add_argument("--mode", choices=["sim", "pre", "post", "pre-post", "all"], default=DEFAULT_MODE, 
-                        help="Which images to include: simulated_iter, pre_execution, post_execution, pre-post pairs, or all")
+    parser = argparse.ArgumentParser(description="Create an animation from Tetris screenshots")
+    parser.add_argument("--session", required=True, help="Path to the session directory")
+    parser.add_argument("--output", help="Path to save the animation")
+    parser.add_argument("--type", default="gif", choices=["gif", "mp4"], help="Animation type (gif or mp4)")
+    parser.add_argument("--fps", type=int, default=2, help="Frames per second")
+    parser.add_argument("--mode", default="all", choices=["all", "before", "after"], 
+                        help="Which screenshots to include: all, before moves only, after moves only")
     
     args = parser.parse_args()
     
-    # If MP4 is requested but MoviePy is not available, switch to GIF
-    if args.type == "mp4" and not MOVIEPY_AVAILABLE:
-        print("Warning: MP4 output requires MoviePy, which is not installed.")
-        print("To enable MP4 creation, run: pip install numpy>=1.25.0 moviepy")
-        print("NOTE: This will make the Tetris simulator unusable until you reinstall numpy==1.24.4")
-        print("Switching to GIF output for now.")
-        args.type = "gif"
-    
-    # Check if creating MP4 and give NumPy warning
-    if args.type == "mp4" and MOVIEPY_AVAILABLE:
-        print("IMPORTANT: Creating MP4 requires NumPy>=1.25.0, which makes the Tetris simulator")
-        print("           unusable until you reinstall numpy==1.24.4")
-        print("To restore Tetris simulator functionality after creating an MP4:")
-        print("    pip install numpy==1.24.4")
-        print("")
-    
-    # Locate the game_logs directory based on where the script is run from
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Try several potential locations
-    potential_paths = [
-        os.path.join(script_dir, "game_logs", args.session),
-        os.path.join(script_dir, "..", "game_logs", args.session),
-        os.path.join(script_dir, "claude_tetris_outputs", args.session),
-        os.path.join("game_logs", args.session),
-        os.path.join("claude_tetris_outputs", args.session),
-        args.session
-    ]
-    
-    session_dir = None
-    for path in potential_paths:
-        if os.path.exists(path):
-            session_dir = path
-            break
-    
-    if session_dir is None:
-        print(f"Error: Session directory not found: {args.session}")
-        print("Available sessions:")
-        
-        # Try to find available sessions
-        for base_dir in ["game_logs", "claude_tetris_outputs"]:
-            if os.path.exists(base_dir):
-                sessions = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
-                if sessions:
-                    print(f"\nIn {base_dir}:")
-                    for s in sessions:
-                        print(f"  - {s}")
-        
-        sys.exit(1)
+    # Default output path if not specified
+    if not args.output:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        extension = ".gif" if args.type == "gif" else ".mp4"
+        args.output = f"tetris_animation_{timestamp}{extension}"
     
     # Find images
-    try:
-        image_paths = find_images(session_dir, args.mode)
-    except Exception as e:
-        print(f"Error finding images: {e}")
-        sys.exit(1)
+    image_paths = find_images(args.session, args.mode)
     
     if not image_paths:
-        print(f"No images found in {session_dir} for mode '{args.mode}'")
-        sys.exit(1)
-        
-    print(f"Found {len(image_paths)} images for animation")
+        print(f"No {args.mode} screenshots found in {args.session}")
+        return
     
-    # Generate output path if not specified
-    if not args.output:
-        output_filename = f"tetris_{args.mode}_{Path(session_dir).name}.{args.type}"
-        output_dir = os.path.join(script_dir, DEFAULT_OUTPUT_FOLDER)
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, output_filename)
-    else:
-        output_path = args.output
-        if not output_path.endswith(f'.{args.type}'):
-            output_path += f'.{args.type}'
+    print(f"Found {len(image_paths)} screenshots")
     
     # Create animation
-    create_animation(image_paths, output_path, args.fps)
+    success = create_animation(image_paths, args.output, args.fps, args.type)
+    
+    if success:
+        print(f"Animation saved to: {args.output}")
+    else:
+        print("Failed to create animation")
 
 if __name__ == "__main__":
     main() 
