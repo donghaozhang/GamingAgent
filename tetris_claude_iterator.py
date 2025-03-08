@@ -35,6 +35,14 @@ from PIL import Image, ImageDraw, ImageFont
 import pyautogui
 from pynput import keyboard
 import anthropic
+import subprocess
+
+# Try to import from local module if available
+try:
+    from create_tetris_animation import create_animation, find_images
+    CREATE_ANIMATION_AVAILABLE = True
+except ImportError:
+    CREATE_ANIMATION_AVAILABLE = False
 
 # Try to load optional dependencies
 try:
@@ -127,6 +135,12 @@ class TetrisClaudeIterator:
         # Add auto-space counter (maximum 4 automatic space presses)
         self.auto_space_counter = 0
         self.max_auto_spaces = 4
+        
+        # Flag to track if 'q' was pressed to quit
+        self.quit_with_q = False
+        
+        # GIF animation settings
+        self.gif_fps = 2
         
         # Define prompts for Claude
         self.system_prompt = """You are a Tetris game-playing assistant. 
@@ -643,6 +657,7 @@ Here's the current Tetris game state image:
                     return False  # Stop listener
                 elif hasattr(key, 'char') and key.char == 'q':
                     quit_pressed = True
+                    self.quit_with_q = True  # Flag to indicate q was pressed
                     return False  # Stop listener
                 elif key == keyboard.Key.esc:
                     quit_pressed = True
@@ -659,6 +674,56 @@ Here's the current Tetris game state image:
             return False
             
         return True
+        
+    def generate_animation(self):
+        """Generate a GIF animation from session screenshots when quitting"""
+        if not self.quit_with_q:
+            return  # Only generate animation when quitting with 'q'
+            
+        self.log_message("Generating GIF animation from session screenshots...")
+        
+        # Path to save the animation
+        animation_dir = os.path.join(self.session_dir, "animations")
+        os.makedirs(animation_dir, exist_ok=True)
+        output_filename = f"tetris_session_{time.strftime('%Y%m%d_%H%M%S')}.gif"
+        output_path = os.path.join(animation_dir, output_filename)
+        
+        try:
+            if CREATE_ANIMATION_AVAILABLE:
+                # Use imported animation creator if available
+                self.log_message("Using built-in animation creator...")
+                # Find all screenshot images in the session folder
+                image_paths = find_images(self.session_dir, "all")
+                if image_paths:
+                    create_animation(image_paths, output_path, fps=self.gif_fps)
+                    self.log_message(f"Animation saved to: {output_path}")
+                else:
+                    self.log_message("No screenshots found to create animation")
+            else:
+                # Use subprocess to call the animation script
+                self.log_message("Using external animation creator script...")
+                script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "create_tetris_animation.py")
+                if os.path.exists(script_path):
+                    cmd = [
+                        sys.executable,
+                        script_path,
+                        "--session", self.session_dir,
+                        "--output", output_path,
+                        "--type", "gif",
+                        "--fps", str(self.gif_fps),
+                        "--mode", "all"
+                    ]
+                    self.log_message(f"Running: {' '.join(cmd)}")
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    if result.returncode == 0:
+                        self.log_message(f"Animation created successfully: {output_path}")
+                    else:
+                        self.log_message(f"Error creating animation: {result.stderr}")
+                else:
+                    self.log_message(f"Animation script not found: {script_path}")
+        except Exception as e:
+            self.log_message(f"Error generating animation: {str(e)}")
+            traceback.print_exc()
 
     def extract_python_code(self, text):
         """Extract Python code from the response"""
@@ -1119,6 +1184,8 @@ pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautog
             self.log_message("Press space to start...")
             # Wait for initial space press if auto-space is disabled
             if not self.wait_for_space_key():
+                self.log_message("=== Tetris Claude Iterator finished ===")
+                self.generate_animation()  # Generate animation if quitting at startup
                 return
 
         try:
@@ -1173,6 +1240,9 @@ pyautogui = SimulatedPyAutoGUI(iterator) if iterator.simulated_mode else pyautog
             self.log_message("Keyboard interrupt detected. Shutting down...")
         finally:
             self.log_message("=== Tetris Claude Iterator finished ===")
+            # Generate animation if quitting with 'q'
+            if self.quit_with_q:
+                self.generate_animation()
 
 
 def cleanup_txt_files():
@@ -1198,12 +1268,17 @@ def cleanup_txt_files():
 def main():
     """Main function to parse args and run the iterator"""
     parser = argparse.ArgumentParser(description='Tetris Claude Iterator')
-    parser.add_argument('--model', type=str, help='Claude model to use (default: claude-3-opus-20240229)')
+    parser.add_argument('--model', type=str, help='Claude model to use (default: claude-3-7-sonnet-20250219)')
     parser.add_argument('--output', type=str, help='Output directory')
     parser.add_argument('--window', type=str, help='Window title to capture')
     parser.add_argument('--no-simulate', action='store_true', help='Disable simulated board mode')
+    parser.add_argument('--force-simulate', action='store_true', help='Force simulated board mode even if a window is found')
     parser.add_argument('--save-responses', action='store_true', help='Save API responses to JSON files')
     parser.add_argument('--auto-iterations', type=int, default=4, help='Number of automatic iterations before requiring manual input (default: 4)')
+    parser.add_argument('--image', type=str, help='Path to a specific Tetris screenshot to analyze (single-shot mode)')
+    parser.add_argument('--auto-gif', action='store_true', help='Automatically generate GIF when quitting with Q (default: True)')
+    parser.add_argument('--no-auto-gif', action='store_true', help='Disable automatic GIF generation when quitting')
+    parser.add_argument('--gif-fps', type=int, default=2, help='Frames per second for the generated GIF (default: 2)')
     
     args = parser.parse_args()
     
@@ -1228,13 +1303,56 @@ def main():
         else:
             print(f"Auto-space feature enabled for {args.auto_iterations} iterations.")
     
-    if args.no_simulate:
+    # Configure GIF generation
+    if args.no_auto_gif:
+        iterator.quit_with_q = False  # Will never be set to True
+        print("Automatic GIF generation disabled")
+    elif args.auto_gif:
+        print("Automatic GIF generation enabled when quitting with 'q'")
+    
+    # Set GIF FPS if specified
+    if args.gif_fps:
+        iterator.gif_fps = args.gif_fps
+        print(f"GIF animation will be generated at {args.gif_fps} frames per second")
+    
+    # Determine simulation mode
+    if args.force_simulate:
+        print("Forcing simulated Tetris board mode")
+        iterator.simulated_mode = True
+        # Create the simulated board
+        iterator.create_simple_tetris_board()
+    elif args.no_simulate:
         print("Using real screenshots instead of simulated board")
         iterator.simulated_mode = False
-    else:
-        # Default is to use simple simulated board
-        pass
     
+    # Single-shot mode - analyze a specific image
+    if args.image:
+        if os.path.exists(args.image):
+            print(f"Single-shot mode: Analyzing image {args.image}")
+            image = Image.open(args.image)
+            response = iterator.call_claude_api(image)
+            print("\n" + "="*50)
+            print("Claude's Response:")
+            print(response)
+            print("="*50 + "\n")
+            
+            # Extract and execute code if requested
+            code = iterator.extract_python_code(response)
+            if code and not args.no_simulate:
+                print("Executing extracted code in simulated mode:")
+                iterator.simulated_mode = True
+                iterator.create_simple_tetris_board()
+                iterator.execute_code(code)
+                # Save the result
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_path = os.path.join(output_dir, f"result_{timestamp}.png")
+                iterator.simulated_board.save(output_path)
+                print(f"Result saved to: {output_path}")
+        else:
+            print(f"Error: Image file not found: {args.image}")
+        return
+    
+    # Regular interactive mode
     iterator.run()
 
 
