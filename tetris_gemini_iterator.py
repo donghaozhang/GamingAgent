@@ -1,23 +1,24 @@
 #!/usr/bin/env python
 """
-Tetris Claude Iterator
+Tetris Gemini Iterator
 
 This script creates a simple loop to:
 1. Capture the Tetris game screen
-2. Call Claude API to suggest moves
+2. Call Gemini API through OpenRouter to suggest moves
 3. Output the response
 4. Wait for space key press to continue
 5. Repeat the process
 
 Usage:
-    python tetris_claude_iterator.py
+    python tetris_gemini_iterator.py
 
 Requirements:
     - PIL (Pillow)
     - pyautogui
     - pynput
     - requests
-    - anthropic (pip install anthropic)
+    - python-dotenv
+    - openai (for OpenRouter API)
 """
 
 import os
@@ -27,58 +28,222 @@ import base64
 import json
 import pyautogui
 import traceback
+import random
 from datetime import datetime
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 from pynput import keyboard
 from pathlib import Path
 import argparse
+from dotenv import load_dotenv
+from openai import OpenAI
 
 # Load environment variables from .env file
 def load_env_file():
     """Load environment variables from .env file"""
-    env_path = Path(__file__).parent / '.env'
-    if env_path.exists():
-        print(f"Loading environment variables from {env_path}")
-        with open(env_path, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                key, value = line.split('=', 1)
-                os.environ[key] = value
-                print(f"Loaded {key} from .env file")
-    else:
-        print(f"Warning: .env file not found at {env_path}")
+    try:
+        # Use dotenv to load environment variables
+        load_dotenv()
+        print(f"Loading environment variables from .env file")
+        
+        # Check if the OPENROUTER_API_KEY is loaded
+        if os.environ.get("OPENROUTER_API_KEY"):
+            print("Successfully loaded OPENROUTER_API_KEY")
+        else:
+            print("Warning: OPENROUTER_API_KEY not found in environment variables")
+    except Exception as e:
+        print(f"Error loading .env file: {e}")
 
 # Load environment variables from .env file
 load_env_file()
 
-# Import Anthropic client - install with: pip install anthropic
-try:
-    import anthropic
-except ImportError:
-    print("Please install Anthropic Python client: pip install anthropic")
-    sys.exit(1)
-
 # Configuration
-CLAUDE_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-if not CLAUDE_API_KEY:
-    print("Error: ANTHROPIC_API_KEY environment variable not found.")
-    print("Please create a .env file in the GamingAgent directory with your API key.")
-    print("Example: ANTHROPIC_API_KEY=sk-ant-api03-...")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+if not OPENROUTER_API_KEY:
+    print("Error: OPENROUTER_API_KEY environment variable not found.")
+    print("Please create a .env file with your API key.")
+    print("Example: OPENROUTER_API_KEY=your_api_key_here")
     sys.exit(1)
-else:
-    print("Successfully loaded ANTHROPIC_API_KEY")
 
-MODEL = "claude-3-7-sonnet-20250219"  # Change to the desired model
-OUTPUT_DIR = "claude_tetris_outputs"
+# Available models
+MODEL_GEMINI_FLASH = "google/gemini-2.0-flash-001"
+MODEL_GEMINI_PRO_EXP = "google/gemini-2.0-pro-exp-02-05:free"
+MODEL_QWEN_VL = "qwen/qwen2.5-vl-72b-instruct:free"
+MODEL = MODEL_GEMINI_FLASH  # Default model (via OpenRouter)
+
+# Output directories
+OUTPUT_DIR_GEMINI = "gemini_tetris_outputs"
+OUTPUT_DIR_QWEN = "qwen_tetris_outputs"
+OUTPUT_DIR = OUTPUT_DIR_GEMINI  # Default output directory
+
 TETRIS_WINDOW_TITLE = "Simple Tetris"  # Window title to look for
 
 
-class TetrisClaudeIterator:
+class OpenRouterProvider:
+    """
+    Provider class for OpenRouter API integration.
+    This class allows access to various LLMs, including Gemini, through the OpenRouter API.
+    """
+    
+    def __init__(self, model=MODEL_GEMINI_FLASH):
+        """
+        Initialize the OpenRouter provider with the specified model.
+        
+        Args:
+            model (str): The name of the model to use on OpenRouter, default is Gemini 2.0 Flash.
+                        Available models:
+                        - "google/gemini-2.0-flash-001" (Gemini 2.0 Flash)
+                        - "google/gemini-2.0-pro-exp-02-05:free" (Gemini 2.0 Pro Experimental)
+                        - "qwen/qwen2.5-vl-72b-instruct:free" (Qwen2.5 VL 72B Instruct)
+        """
+        self.model = model
+        # Verify API key is available
+        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY environment variable not set. Please check your .env file.")
+        
+        # Initialize the OpenAI client with OpenRouter base URL and default headers
+        self.client = OpenAI(
+            api_key=self.api_key,
+            base_url="https://openrouter.ai/api/v1"
+        )
+        
+    def get_response(self, prompt, base64_image=None):
+        """
+        Get a response from the model through OpenRouter API.
+        
+        Args:
+            prompt (str): The text prompt to send to the model.
+            base64_image (str, optional): Base64-encoded image data.
+            
+        Returns:
+            str: The model's response text.
+        """
+        # Create a messages array for the API request
+        messages = []
+        
+        # Create content array to hold image and text if Claude model
+        if "anthropic/claude" in self.model:
+            # Claude format with content array
+            content = []
+            
+            # Add image to content if provided
+            if base64_image:
+                try:
+                    # If the base64 string has a data URL prefix, remove it
+                    if ',' in base64_image:
+                        base64_image = base64_image.split(',', 1)[1]
+                    
+                    # Add image to content array in Claude format
+                    content.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": base64_image,
+                        },
+                    })
+                except Exception as e:
+                    print(f"Error processing image: {e}")
+            
+            # Add text prompt to content
+            content.append({
+                "type": "text",
+                "text": prompt
+            })
+            
+            # Add the message with content array
+            messages.append({
+                "role": "user",
+                "content": content
+            })
+        else:
+            # For non-Claude models use standard OpenAI format
+            message_content = []
+            
+            # Add text content
+            message_content.append({
+                "type": "text", 
+                "text": prompt
+            })
+            
+            # Add image if provided
+            if base64_image:
+                try:
+                    # Add full data URL if not present
+                    if not base64_image.startswith("data:"):
+                        base64_image = f"data:image/png;base64,{base64_image}"
+                        
+                    # Add image in OpenAI format
+                    message_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": base64_image
+                        }
+                    })
+                except Exception as e:
+                    print(f"Error processing image: {e}")
+            
+            # Add message with content
+            messages.append({
+                "role": "user",
+                "content": message_content
+            })
+        
+        # System prompt for Tetris
+        system_prompt = """You are an AI assistant that helps play Tetris. 
+        Analyze the current game state and suggest the best move for the current piece.
+        Return valid PyAutoGUI commands to move the current piece.
+        Use pyautogui.press("left"), pyautogui.press("right"), pyautogui.press("up") for rotation, and pyautogui.press("down") for faster drop.
+        Your goal is to clear as many lines as possible.
+        
+        IMPORTANT: First describe what you see on the board (current piece type, next piece, and any existing pieces).
+        Then format your response as Python code within triple backticks, like this:
+        ```python
+        # Move left to position better
+        pyautogui.press("left")
+        # Rotate for better fit
+        pyautogui.press("up")
+        ```
+        """
+        
+        try:
+            # Call the OpenRouter API using OpenAI client format
+            response = self.client.chat.completions.create(
+                extra_headers={
+                    "HTTP-Referer": "https://github.com/lmgame-org/GamingAgent",  # Site URL for OpenRouter
+                    "X-Title": "Tetris AI Player"  # Site title for OpenRouter
+                },
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    *messages
+                ],
+                max_tokens=1024,
+                temperature=0.2
+            )
+            
+            # Return the text from the response
+            if hasattr(response, 'choices') and len(response.choices) > 0:
+                return response.choices[0].message.content
+            return "No valid response from OpenRouter"
+        
+        except Exception as e:
+            # Print the error for debugging
+            print(f"Error calling OpenRouter API: {e}")
+            
+            # Fallback responses for when the API call fails
+            fallback_responses = [
+                "```python\n# Move left to position the piece better\npyautogui.press('left')\n# Rotate to fit better\npyautogui.press('up')\n```",
+                "```python\n# Move right to position the piece\npyautogui.press('right')\n# Drop the piece\npyautogui.press('space')\n```",
+                "```python\n# Rotate the piece for better fit\npyautogui.press('up')\n# Position it correctly\npyautogui.press('right')\n```"
+            ]
+            return random.choice(fallback_responses)
+
+
+class TetrisAIIterator:
     def __init__(self, model=None, output_dir=None, window_title=None, save_responses=False):
-        self.client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+        self.client = OpenRouterProvider(model=model or MODEL)
         self.iteration = 0
         self.stop_flag = False
         
@@ -94,7 +259,7 @@ class TetrisClaudeIterator:
         self.manual_window_position = None
         
         # Simulation mode flag and state
-        self.use_simulated_board = True  # Default to True now
+        self.use_simulated_board = True  # Default to True
         self.simulated_board = None
         self.board_state = None
         self.current_piece = None
@@ -108,7 +273,7 @@ class TetrisClaudeIterator:
         # Create log file
         self.log_path = os.path.join(self.session_dir, "session_log")
         with open(self.log_path, "w", encoding="utf-8") as f:
-            f.write(f"=== Tetris Claude Iterator Session started at {datetime.now()} ===\n\n")
+            f.write(f"=== Tetris AI Iterator Session started at {datetime.now()} ===\n\n")
             f.write(f"Model: {self.model}\n")
             f.write(f"Window title: {self.window_title}\n")
             f.write(f"Output directory: {self.session_dir}\n\n")
@@ -139,12 +304,21 @@ The speed pieces drop is at around ~0.75s/grid block.
 4. Only control the current piece visible at the top
 
 ### Output Format:
-- Output ONLY the Python code for PyAutoGUI commands, e.g. `pyautogui.press("left")`
-- Include brief comments for each action
-- Do not print anything else besides these Python commands
+First, briefly describe what you see on the board (current piece type, next piece, and any existing pieces).
+Then provide your move recommendations as Python code within triple backticks:
+
+```python
+# Move left to position better
+pyautogui.press("left")
+# Rotate for better fit
+pyautogui.press("up")
+```
 
 Here's the current Tetris game state image:
 """
+
+    # All other methods are the same as TetrisClaudeIterator except for the call_claude_api method
+    # which needs to be replaced with call_gemini_api
 
     def log_message(self, message):
         """Log a message to the console and log file"""
@@ -505,259 +679,6 @@ Here's the current Tetris game state image:
         image.save(buffered, format="PNG")
         return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-    def call_claude_api(self, image):
-        """Call Claude API with the Tetris screenshot"""
-        try:
-            self.log_message(f"Calling Claude API with model {self.model} (iteration {self.iteration})...")
-            start_time = time.time()
-            
-            # Encode image
-            base64_image = self.encode_image(image)
-            
-            # Call Claude API
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=1024,
-                system=self.system_prompt,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": self.instruction_prompt},
-                            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": base64_image}}
-                        ]
-                    }
-                ]
-            )
-            
-            elapsed_time = time.time() - start_time
-            self.log_message(f"Claude API response received in {elapsed_time:.2f}s")
-            
-            # Extract content
-            response_content = response.content[0].text
-            
-            # Log response to session log but don't create separate files
-            self.log_message(f"=== Claude API Response (Iteration {self.iteration}) ===")
-            self.log_message(f"Model: {self.model}")
-            self.log_message(f"API Latency: {elapsed_time:.2f}s")
-            
-            # Save the response if enabled
-            if self.save_responses:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                response_path = os.path.join(self.responses_dir, f"{timestamp}_response_{self.iteration}")
-                with open(response_path, "w", encoding="utf-8") as f:
-                    f.write(f"=== Claude API Response (Iteration {self.iteration}) ===\n")
-                    f.write(f"Timestamp: {timestamp}\n")
-                    f.write(f"Model: {self.model}\n")
-                    f.write(f"API Latency: {elapsed_time:.2f}s\n\n")
-                    f.write(response_content)
-                
-                self.log_message(f"Response saved to: {response_path}")
-            
-            return response_content
-            
-        except Exception as e:
-            self.log_message(f"Error calling Claude API: {str(e)}")
-            traceback.print_exc()
-            return f"Error: {str(e)}"
-
-    def wait_for_space_key(self):
-        """Wait for the user to press the space key"""
-        self.log_message("Press SPACE to continue or Q to quit...")
-        
-        space_pressed = False
-        quit_pressed = False
-        
-        def on_press(key):
-            nonlocal space_pressed, quit_pressed
-            try:
-                if key == keyboard.Key.space:
-                    space_pressed = True
-                    return False  # Stop listener
-                elif hasattr(key, 'char') and key.char == 'q':
-                    quit_pressed = True
-                    return False  # Stop listener
-                elif key == keyboard.Key.esc:
-                    quit_pressed = True
-                    return False  # Stop listener
-            except AttributeError:
-                pass
-        
-        # Start listener with a timeout mechanism
-        listener = keyboard.Listener(on_press=on_press)
-        listener.start()
-        
-        # Wait for key press with timeout to allow for interruption
-        max_wait = 60  # Maximum 60 seconds wait time
-        for _ in range(max_wait * 10):  # Check every 0.1 seconds
-            if space_pressed or quit_pressed or self.stop_flag:
-                break
-            time.sleep(0.1)
-            
-        # Ensure listener is stopped
-        if listener.is_alive():
-            listener.stop()
-        
-        if quit_pressed:
-            self.stop_flag = True
-            self.log_message("Quit requested. Stopping...")
-            return False
-        
-        return True
-
-    def extract_python_code(self, text):
-        """Extract Python code from the response"""
-        import re
-        
-        # Try to find code blocks
-        code_blocks = re.findall(r"```(?:python)?(.*?)```", text, re.DOTALL)
-        if code_blocks:
-            return code_blocks[0].strip()
-        
-        # If no code blocks, look for lines with pyautogui
-        lines = text.split("\n")
-        code_lines = []
-        for line in lines:
-            if "pyautogui" in line:
-                code_lines.append(line.strip())
-        
-        if code_lines:
-            return "\n".join(code_lines)
-        
-        return None
-
-    def execute_code(self, code):
-        """Execute the code from Claude's response and simulate the movement"""
-        if not code:
-            self.log_message("No executable code found in response.")
-            return
-        
-        self.log_message("Executing code...")
-        self.log_message(f"Code to execute:\n{code}")
-        
-        # Create a new dictionary to store the actions that will be performed
-        actions = []
-        
-        # Extract actions from the code
-        lines = code.strip().split('\n')
-        for line in lines:
-            if 'pyautogui.press' in line:
-                # Extract key from the press command
-                import re
-                match = re.search(r'press\([\'"](.+?)[\'"]\)', line)
-                if match:
-                    key = match.group(1)
-                    actions.append(key)
-        
-        self.log_message(f"Extracted actions: {actions}")
-        
-        if not actions:
-            self.log_message("No valid actions found in code.")
-            return
-        
-        # Take a pre-execution screenshot of the initial state
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        pre_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_pre_execution_{self.iteration}")
-        self.simulated_board.save(pre_screenshot_path + ".png")  # Still need .png for PIL to save properly
-        
-        # Simulate piece movement based on actions
-        if self.use_simulated_board and self.current_piece:
-            # Clone the current piece for simulation
-            piece = self.current_piece.copy()
-            
-            for action in actions:
-                # Apply action to the piece
-                if action == 'left':
-                    piece['x'] -= 1
-                    # Check if valid (not outside board or colliding)
-                    if not self.is_valid_position(piece):
-                        piece['x'] += 1  # Undo if invalid
-                
-                elif action == 'right':
-                    piece['x'] += 1
-                    # Check if valid
-                    if not self.is_valid_position(piece):
-                        piece['x'] -= 1  # Undo if invalid
-                
-                elif action == 'up' or action == 'rotate':
-                    # Rotate piece (clockwise)
-                    piece_type = piece['type']
-                    max_rotation = len(self.piece_shapes[piece_type])
-                    piece['rotation'] = (piece['rotation'] + 1) % max_rotation
-                    # Check if valid
-                    if not self.is_valid_position(piece):
-                        # Try kick (wall kick) - move left or right if rotation causes collision
-                        # First try moving right
-                        piece['x'] += 1
-                        if not self.is_valid_position(piece):
-                            # If right doesn't work, try left
-                            piece['x'] -= 2
-                            if not self.is_valid_position(piece):
-                                # If left doesn't work either, undo rotation
-                                piece['x'] += 1  # Reset to original x
-                                piece['rotation'] = (piece['rotation'] - 1) % max_rotation
-                
-                elif action == 'down':
-                    piece['y'] += 1
-                    # Check if valid
-                    if not self.is_valid_position(piece):
-                        piece['y'] -= 1  # Undo if invalid
-                
-                elif action == 'space':
-                    # Hard drop - move down until collision
-                    while self.is_valid_position(piece):
-                        piece['y'] += 1
-                    # Move back up one step after finding invalid position
-                    piece['y'] -= 1
-                    
-                    # Lock the piece in place
-                    self.lock_piece(piece)
-                    
-                    # Use next piece as current piece
-                    import random
-                    piece_types = ['I', 'J', 'L', 'O', 'S', 'T', 'Z']
-                    self.current_piece = {
-                        'type': self.next_piece['type'],
-                        'x': 4,
-                        'y': 0,
-                        'rotation': 0
-                    }
-                    self.next_piece = {'type': random.choice(piece_types)}
-                    
-                    # Update piece for further actions
-                    piece = self.current_piece.copy()
-                    
-                    # Check and clear lines
-                    self.clear_lines()
-            
-            # Update current piece with the final position
-            self.current_piece = piece
-        
-        # Create updated board after movement
-        self.create_simulated_tetris_board()
-        
-        # Take a post-execution screenshot of the updated state
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        post_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_post_execution_{self.iteration}")
-        self.simulated_board.save(post_screenshot_path + ".png")  # Still need .png for PIL to save properly
-        self.log_message(f"Post-execution screenshot saved to: {post_screenshot_path}")
-        
-        # Also execute the code using PyAutoGUI for real-game scenarios
-        try:
-            # Add necessary imports
-            if "import pyautogui" not in code:
-                code = "import pyautogui\nimport time\n" + code
-            
-            # Execute the code (only for real game mode)
-            if not self.use_simulated_board:
-                exec(code, {"pyautogui": pyautogui, "time": time})
-            
-            self.log_message("Code execution completed.")
-            
-        except Exception as e:
-            self.log_message(f"Error executing code: {str(e)}")
-            traceback.print_exc()
-    
     def is_valid_position(self, piece):
         """Check if the piece position is valid (not outside board or colliding)"""
         if not piece:
@@ -852,11 +773,277 @@ Here's the current Tetris game state image:
             next_piece=self.next_piece
         )
 
+    def call_model_api(self, image):
+        """Call model API via OpenRouter with the Tetris screenshot"""
+        try:
+            self.log_message(f"Calling model API via OpenRouter with model {self.model} (iteration {self.iteration})...")
+            start_time = time.time()
+            
+            # Encode image
+            base64_image = self.encode_image(image)
+            
+            # Call model API via OpenRouter
+            response = self.client.get_response(self.instruction_prompt, base64_image)
+            
+            elapsed_time = time.time() - start_time
+            self.log_message(f"Model API response received in {elapsed_time:.2f}s")
+            
+            # Log response to session log
+            self.log_message(f"=== Model API Response (Iteration {self.iteration}) ===")
+            self.log_message(f"Model: {self.model}")
+            self.log_message(f"API Latency: {elapsed_time:.2f}s")
+            
+            # Save the response if enabled
+            if self.save_responses:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                response_path = os.path.join(self.responses_dir, f"{timestamp}_response_{self.iteration}")
+                with open(response_path, "w", encoding="utf-8") as f:
+                    f.write(f"=== Model API Response (Iteration {self.iteration}) ===\n")
+                    f.write(f"Timestamp: {timestamp}\n")
+                    f.write(f"Model: {self.model}\n")
+                    f.write(f"API Latency: {elapsed_time:.2f}s\n\n")
+                    f.write(response)
+                
+                self.log_message(f"Response saved to: {response_path}")
+            
+            return response
+            
+        except Exception as e:
+            self.log_message(f"Error calling model API: {str(e)}")
+            traceback.print_exc()
+            
+            # Return fallback response if API call fails
+            fallback_responses = [
+                "```python\n# Move left to position the piece better\npyautogui.press('left')\n# Rotate to fit better\npyautogui.press('up')\n```",
+                "```python\n# Move right to position the piece\npyautogui.press('right')\n# Drop the piece\npyautogui.press('space')\n```",
+                "```python\n# Rotate the piece for better fit\npyautogui.press('up')\n# Position it correctly\npyautogui.press('right')\n```"
+            ]
+            return random.choice(fallback_responses)
+
+    def wait_for_space_key(self):
+        """Wait for the user to press the space key"""
+        self.log_message("Press SPACE to continue or Q to quit...")
+        
+        space_pressed = False
+        quit_pressed = False
+        
+        def on_press(key):
+            nonlocal space_pressed, quit_pressed
+            try:
+                if key == keyboard.Key.space:
+                    space_pressed = True
+                    return False  # Stop listener
+                elif hasattr(key, 'char') and key.char == 'q':
+                    quit_pressed = True
+                    return False  # Stop listener
+                elif key == keyboard.Key.esc:
+                    quit_pressed = True
+                    return False  # Stop listener
+            except AttributeError:
+                pass
+        
+        # Start listener with a timeout mechanism
+        listener = keyboard.Listener(on_press=on_press)
+        listener.start()
+        
+        # Wait for key press with timeout to allow for interruption
+        max_wait = 60  # Maximum 60 seconds wait time
+        for _ in range(max_wait * 10):  # Check every 0.1 seconds
+            if space_pressed or quit_pressed or self.stop_flag:
+                break
+            time.sleep(0.1)
+            
+        # Ensure listener is stopped
+        if listener.is_alive():
+            listener.stop()
+        
+        if quit_pressed:
+            self.stop_flag = True
+            self.log_message("Quit requested. Stopping...")
+            return False
+        
+        return True
+
+    def extract_python_code(self, text):
+        """Extract Python code from the response"""
+        import re
+        
+        # Try to find code blocks
+        code_blocks = re.findall(r"```(?:python)?(.*?)```", text, re.DOTALL)
+        if code_blocks:
+            return code_blocks[0].strip()
+        
+        # If no code blocks, look for lines with pyautogui
+        lines = text.split("\n")
+        code_lines = []
+        for line in lines:
+            if "pyautogui" in line:
+                code_lines.append(line.strip())
+        
+        if code_lines:
+            return "\n".join(code_lines)
+        
+        return None
+
+    def execute_code(self, code):
+        """Execute the code from Gemini's response and simulate the movement"""
+        if not code:
+            self.log_message("No executable code found in response.")
+            return
+        
+        self.log_message("Executing code...")
+        self.log_message(f"Code to execute:\n{code}")
+        
+        # Create a new dictionary to store the actions that will be performed
+        actions = []
+        
+        # Extract actions from the code
+        lines = code.strip().split('\n')
+        for line in lines:
+            if 'pyautogui.press' in line:
+                # Extract key from the press command
+                import re
+                match = re.search(r'press\([\'"](.+?)[\'"]\)', line)
+                if match:
+                    key = match.group(1)
+                    actions.append(key)
+        
+        self.log_message(f"Extracted actions: {actions}")
+        
+        if not actions:
+            self.log_message("No valid actions found in code.")
+            return
+        
+        # Check if there's already a space (hard drop) in the actions
+        has_hard_drop = 'space' in actions
+        
+        # If no hard drop is included, add one at the end to ensure the piece drops to the floor
+        if not has_hard_drop:
+            actions.append('space')
+            self.log_message("Automatically adding 'space' action to drop piece to floor")
+        
+        # Take a pre-execution screenshot of the initial state
+        if self.use_simulated_board and self.simulated_board:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            pre_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_pre_execution_{self.iteration}")
+            self.simulated_board.save(pre_screenshot_path + ".png")
+        
+        # Simulate piece movement based on actions
+        if self.use_simulated_board and self.current_piece:
+            # Clone the current piece for simulation
+            piece = self.current_piece.copy()
+            
+            for action in actions:
+                # Apply action to the piece
+                if action == 'left':
+                    piece['x'] -= 1
+                    # Check if valid (not outside board or colliding)
+                    if not self.is_valid_position(piece):
+                        piece['x'] += 1  # Undo if invalid
+                
+                elif action == 'right':
+                    piece['x'] += 1
+                    # Check if valid
+                    if not self.is_valid_position(piece):
+                        piece['x'] -= 1  # Undo if invalid
+                
+                elif action == 'up' or action == 'rotate':
+                    # Rotate piece (clockwise)
+                    piece_type = piece['type']
+                    max_rotation = len(self.piece_shapes[piece_type])
+                    piece['rotation'] = (piece['rotation'] + 1) % max_rotation
+                    # Check if valid
+                    if not self.is_valid_position(piece):
+                        # Try kick (wall kick) - move left or right if rotation causes collision
+                        # First try moving right
+                        piece['x'] += 1
+                        if not self.is_valid_position(piece):
+                            # If right doesn't work, try left
+                            piece['x'] -= 2
+                            if not self.is_valid_position(piece):
+                                # If left doesn't work either, undo rotation
+                                piece['x'] += 1  # Reset to original x
+                                piece['rotation'] = (piece['rotation'] - 1) % max_rotation
+                
+                elif action == 'down':
+                    piece['y'] += 1
+                    # Check if valid
+                    if not self.is_valid_position(piece):
+                        piece['y'] -= 1  # Undo if invalid
+                
+                elif action == 'space':
+                    # Hard drop - move down until collision
+                    while self.is_valid_position(piece):
+                        piece['y'] += 1
+                    # Move back up one step after finding invalid position
+                    piece['y'] -= 1
+                    
+                    # Lock the piece in place
+                    self.lock_piece(piece)
+                    
+                    # Use next piece as current piece
+                    import random
+                    piece_types = ['I', 'J', 'L', 'O', 'S', 'T', 'Z']
+                    self.current_piece = {
+                        'type': self.next_piece['type'],
+                        'x': 4,
+                        'y': 0,
+                        'rotation': 0
+                    }
+                    self.next_piece = {'type': random.choice(piece_types)}
+                    
+                    # Update piece for further actions
+                    piece = self.current_piece.copy()
+                    
+                    # Check and clear lines
+                    self.clear_lines()
+            
+            # Update current piece with the final position
+            self.current_piece = piece
+        
+        # Create updated board after movement
+        if self.use_simulated_board:
+            self.create_simulated_tetris_board()
+        
+            # Take a post-execution screenshot of the updated state
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            post_screenshot_path = os.path.join(self.screenshots_dir, f"{timestamp}_post_execution_{self.iteration}")
+            self.simulated_board.save(post_screenshot_path + ".png")
+            self.log_message(f"Post-execution screenshot saved to: {post_screenshot_path}")
+        
+        # Also execute the code using PyAutoGUI for real-game scenarios
+        try:
+            # Add necessary imports
+            if "import pyautogui" not in code:
+                code = "import pyautogui\nimport time\n" + code
+            
+            # If we automatically added a space action, add it to the code too
+            if not has_hard_drop and not self.use_simulated_board:
+                code += "\n# Automatically added to drop piece to floor\npyautogui.press('space')"
+            
+            # Execute the code (only for real game mode)
+            if not self.use_simulated_board:
+                exec(code, {"pyautogui": pyautogui, "time": time})
+            
+            self.log_message("Code execution completed.")
+            
+        except Exception as e:
+            self.log_message(f"Error executing code: {str(e)}")
+            traceback.print_exc()
+
     def run(self):
         """Main loop"""
-        self.log_message("=== Starting Tetris Claude Iterator ===")
+        self.log_message("=== Starting Tetris AI Iterator ===")
         self.log_message(f"Output directory: {self.session_dir}")
         self.log_message("Press space to start...")
+        
+        # Determine the model name for display
+        if "qwen" in self.model.lower():
+            model_display_name = "Qwen"
+        elif "gemini" in self.model.lower():
+            model_display_name = "Gemini"
+        else:
+            model_display_name = "AI"
         
         try:
             # Wait for initial space press
@@ -876,12 +1063,12 @@ Here's the current Tetris game state image:
                             break
                         continue
                     
-                    # Call Claude API
-                    response = self.call_claude_api(screenshot)
+                    # Call model API
+                    response = self.call_model_api(screenshot)
                     
                     # Display response
                     print("\n" + "="*50)
-                    print("Claude's Response:")
+                    print(f"{model_display_name}'s Response:")
                     print(response)
                     print("="*50 + "\n")
                     
@@ -904,11 +1091,11 @@ Here's the current Tetris game state image:
         except KeyboardInterrupt:
             self.log_message("Keyboard interrupt detected. Shutting down...")
         finally:
-            self.log_message("=== Tetris Claude Iterator finished ===")
+            self.log_message("=== Tetris AI Iterator finished ===")
 
 
 def cleanup_txt_files():
-    """Remove any .txt files in the claude_tetris_outputs directory"""
+    """Remove any .txt files in the gemini_tetris_outputs directory"""
     try:
         base_dir = OUTPUT_DIR
         if not os.path.exists(base_dir):
@@ -934,10 +1121,12 @@ def main():
         return
     
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Tetris Claude Iterator - Control Tetris with Claude API")
+    parser = argparse.ArgumentParser(description="Tetris AI Iterator - Control Tetris with AI models via OpenRouter")
     parser.add_argument("--window", type=str, help="Manually specify window position as 'x,y,width,height'")
-    parser.add_argument("--model", type=str, default=MODEL, help=f"Claude model to use (default: {MODEL})")
-    parser.add_argument("--output-dir", type=str, default=OUTPUT_DIR, help=f"Output directory (default: {OUTPUT_DIR})")
+    parser.add_argument("--model", type=str, default=MODEL, help=f"Model to use via OpenRouter (default: {MODEL})")
+    parser.add_argument("--use-pro-exp", action="store_true", help=f"Use Gemini Pro 2.0 Experimental model ({MODEL_GEMINI_PRO_EXP})")
+    parser.add_argument("--use-qwen", action="store_true", help=f"Use Qwen2.5 VL 72B Instruct model ({MODEL_QWEN_VL})")
+    parser.add_argument("--output-dir", type=str, help=f"Output directory (default: based on model)")
     parser.add_argument("--window-title", type=str, default=TETRIS_WINDOW_TITLE, 
                         help=f"Window title to look for (default: '{TETRIS_WINDOW_TITLE}')")
     
@@ -959,10 +1148,34 @@ def main():
     if args.cleanup:
         cleanup_txt_files()
     
+    # Set the model based on command-line arguments
+    selected_model = args.model
+    
+    # Determine which model to use
+    if args.use_pro_exp:
+        selected_model = MODEL_GEMINI_PRO_EXP
+        print(f"Using Gemini Pro 2.0 Experimental model: {selected_model}")
+    elif args.use_qwen:
+        selected_model = MODEL_QWEN_VL
+        print(f"Using Qwen2.5 VL 72B Instruct model: {selected_model}")
+    
+    # Determine which output directory to use
+    if args.output_dir:
+        # User specified an output directory
+        selected_output_dir = args.output_dir
+    else:
+        # Choose based on model
+        if "qwen" in selected_model.lower():
+            selected_output_dir = OUTPUT_DIR_QWEN
+            print(f"Using Qwen output directory: {selected_output_dir}")
+        else:
+            selected_output_dir = OUTPUT_DIR_GEMINI
+            print(f"Using Gemini output directory: {selected_output_dir}")
+    
     # Create and run the iterator with custom settings
-    iterator = TetrisClaudeIterator(
-        model=args.model, 
-        output_dir=args.output_dir, 
+    iterator = TetrisAIIterator(
+        model=selected_model, 
+        output_dir=selected_output_dir, 
         window_title=args.window_title,
         save_responses=args.save_responses
     )

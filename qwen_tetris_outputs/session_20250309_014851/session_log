@@ -1,0 +1,104 @@
+=== Tetris AI Iterator Session started at 2025-03-09 01:48:51.517661 ===
+
+Model: qwen/qwen2.5-vl-72b-instruct:free
+Window title: Simple Tetris
+Output directory: qwen_tetris_outputs\session_20250309_014851
+
+[2025-03-09 01:48:51.525] === Starting Tetris AI Iterator ===
+[2025-03-09 01:48:51.529] Output directory: qwen_tetris_outputs\session_20250309_014851
+[2025-03-09 01:48:51.533] Press space to start...
+[2025-03-09 01:48:51.537] Press SPACE to continue or Q to quit...
+[2025-03-09 01:48:55.270] 
+=== Iteration 1 ===
+[2025-03-09 01:48:55.305] Simulated Tetris board saved to: qwen_tetris_outputs\session_20250309_014851\screenshots\20250309_014855_274_simulated_iter_1
+[2025-03-09 01:48:55.308] Calling model API via OpenRouter with model qwen/qwen2.5-vl-72b-instruct:free (iteration 1)...
+[2025-03-09 01:49:06.193] Model API response received in 10.88s
+[2025-03-09 01:49:06.197] === Model API Response (Iteration 1) ===
+[2025-03-09 01:49:06.200] Model: qwen/qwen2.5-vl-72b-instruct:free
+[2025-03-09 01:49:06.204] API Latency: 10.88s
+[2025-03-09 01:49:06.213] Executing code...
+[2025-03-09 01:49:06.217] Code to execute:
+# Move the T piece to the right to align with the gap on the right.
+pyautogui.press("right")
+pyautogui.press("right")
+# Rotate the T piece once to fit into the gap.
+pyautogui.press("up")
+# Move it further right if needed.
+pyautogui.press("right")
+# Rotate the T piece to fit into the gap.
+pyautogui.press("up")
+# Drop the piece immediately to clear the line.
+pyautogui.press("space")
+[2025-03-09 01:49:06.221] Extracted actions: ['right', 'right', 'up', 'right', 'up', 'space']
+[2025-03-09 01:49:06.256] Post-execution screenshot saved to: qwen_tetris_outputs\session_20250309_014851\screenshots\20250309_014906_post_execution_1
+[2025-03-09 01:49:06.260] Code execution completed.
+[2025-03-09 01:49:06.264] Waiting for space key to continue...
+[2025-03-09 01:49:06.267] Press SPACE to continue or Q to quit...
+[2025-03-09 01:49:16.200] 
+=== Iteration 2 ===
+[2025-03-09 01:49:16.224] Simulated Tetris board saved to: qwen_tetris_outputs\session_20250309_014851\screenshots\20250309_014916_208_simulated_iter_2
+[2025-03-09 01:49:16.228] Calling model API via OpenRouter with model qwen/qwen2.5-vl-72b-instruct:free (iteration 2)...
+[2025-03-09 01:49:45.644] Model API response received in 29.41s
+[2025-03-09 01:49:45.647] === Model API Response (Iteration 2) ===
+[2025-03-09 01:49:45.651] Model: qwen/qwen2.5-vl-72b-instruct:free
+[2025-03-09 01:49:45.655] API Latency: 29.41s
+[2025-03-09 01:49:45.663] Executing code...
+[2025-03-09 01:49:45.666] Code to execute:
+# Move the T piece to the left to align with the gap
+pyautogui.press("left")
+pyautogui.press("left")
+# Rotate the T piece clockwise to fit into the gap
+pyautogui.press("up")
+# Drop the piece immediately to fill the gap and clear the line
+pyautogui.press("space")
+[2025-03-09 01:49:45.671] Extracted actions: ['left', 'left', 'up', 'space']
+[2025-03-09 01:49:45.703] Post-execution screenshot saved to: qwen_tetris_outputs\session_20250309_014851\screenshots\20250309_014945_post_execution_2
+[2025-03-09 01:49:45.706] Code execution completed.
+[2025-03-09 01:49:45.709] Waiting for space key to continue...
+[2025-03-09 01:49:45.713] Press SPACE to continue or Q to quit...
+[2025-03-09 01:50:05.233] 
+=== Iteration 3 ===
+[2025-03-09 01:50:05.251] Simulated Tetris board saved to: qwen_tetris_outputs\session_20250309_014851\screenshots\20250309_015005_237_simulated_iter_3
+[2025-03-09 01:50:05.255] Calling model API via OpenRouter with model qwen/qwen2.5-vl-72b-instruct:free (iteration 3)...
+[2025-03-09 01:50:18.934] Model API response received in 13.67s
+[2025-03-09 01:50:18.938] === Model API Response (Iteration 3) ===
+[2025-03-09 01:50:18.941] Model: qwen/qwen2.5-vl-72b-instruct:free
+[2025-03-09 01:50:18.943] API Latency: 13.67s
+[2025-03-09 01:50:18.950] Executing code...
+[2025-03-09 01:50:18.953] Code to execute:
+# Rotate the "L" piece clockwise to fit into the gap on the left.
+pyautogui.press("up")
+# Move the piece left to align with the gap.
+pyautogui.press("left")
+# Move the piece down to place it in the gap.
+pyautogui.press("down")
+[2025-03-09 01:50:18.957] Extracted actions: ['up', 'left', 'down']
+[2025-03-09 01:50:18.960] Automatically adding 'space' action to drop piece to floor
+[2025-03-09 01:50:18.994] Post-execution screenshot saved to: qwen_tetris_outputs\session_20250309_014851\screenshots\20250309_015018_post_execution_3
+[2025-03-09 01:50:18.997] Code execution completed.
+[2025-03-09 01:50:19.001] Waiting for space key to continue...
+[2025-03-09 01:50:19.004] Press SPACE to continue or Q to quit...
+[2025-03-09 01:50:22.731] 
+=== Iteration 4 ===
+[2025-03-09 01:50:22.747] Simulated Tetris board saved to: qwen_tetris_outputs\session_20250309_014851\screenshots\20250309_015022_735_simulated_iter_4
+[2025-03-09 01:50:22.751] Calling model API via OpenRouter with model qwen/qwen2.5-vl-72b-instruct:free (iteration 4)...
+[2025-03-09 01:50:33.568] Model API response received in 10.81s
+[2025-03-09 01:50:33.572] === Model API Response (Iteration 4) ===
+[2025-03-09 01:50:33.575] Model: qwen/qwen2.5-vl-72b-instruct:free
+[2025-03-09 01:50:33.578] API Latency: 10.81s
+[2025-03-09 01:50:33.586] Executing code...
+[2025-03-09 01:50:33.589] Code to execute:
+# Move the "I" piece to the left to align with the gap
+pyautogui.press("left")
+pyautogui.press("left")
+# Rotate the "I" piece if necessary to fit the gap
+pyautogui.press("up")
+# Drop the piece immediately to clear the line
+pyautogui.press("space")
+[2025-03-09 01:50:33.594] Extracted actions: ['left', 'left', 'up', 'space']
+[2025-03-09 01:50:33.627] Post-execution screenshot saved to: qwen_tetris_outputs\session_20250309_014851\screenshots\20250309_015033_post_execution_4
+[2025-03-09 01:50:33.631] Code execution completed.
+[2025-03-09 01:50:33.635] Waiting for space key to continue...
+[2025-03-09 01:50:33.638] Press SPACE to continue or Q to quit...
+[2025-03-09 01:50:38.872] Quit requested. Stopping...
+[2025-03-09 01:50:38.878] === Tetris AI Iterator finished ===
