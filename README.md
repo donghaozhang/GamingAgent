@@ -1,283 +1,202 @@
-<div align="center"><h1>&nbsp;GamingAgent - Personal Computer Gaming Agent</h1></div>
+# Tetris AI Agent Documentation
 
-<p align="center">
-<a href="https://x.com/largemodelgame"><b>Demos on X</b></a>
-</p>
+This is an AI agent system that can automatically play Tetris. The system uses AI models to control the game, achieving automated gameplay.
 
-## Contents
-- [Gallery](#gallery)
-- [Introduction](#introduction)
-- [Installation](#installation)
-- [APIs](#apis)
-- [Games](#games)
-  - [Super Mario Bros 1985](#super-mario-bros-1985-by-nintendo)
-  - [2048](#2048)
-  - [Tetris](#tetris)
+## AI Iterator Files
 
-## Gallery
+The system includes multiple AI iterator files that can be used to control Tetris with different AI models. These are the core components of the system:
 
-🎥 Here you can see our AI gaming agents in action, demonstrating their gameplay strategies across different games!
+### tetris_ai_iterator.py
 
-### Super Mario Bros AI Gameplay Comparison
+This is the main, unified iterator that supports multiple AI models through different providers:
 
-<div align="center">
-  <table>
-    <tr>
-      <td align="center"><b>AI Gameplays</b></td>
-    </tr>
-    <tr>
-      <td>
-        <img src="assets/super_mario_bros/mario-side-by-side-demo.gif" width="400" height="400">
-      </td>
-    </tr>
-  </table>
-</div>
+- **Supported Models**:
+  - Gemini 2.0 Flash (default, via OpenRouter)
+  - Gemini Pro 2.0 Experimental (via OpenRouter)
+  - Qwen2.5 VL 72B Instruct (via OpenRouter)
+  - OpenAI o3-mini-high (via OpenRouter)
+  - OpenAI o3-mini (direct API)
 
-### 2048 AI Gameplay Comparison
+- **Key Features**:
+  - Supports both OpenRouter and direct OpenAI APIs
+  - Automatically selects appropriate output directories based on model
+  - Provides fallback mechanisms for API failures
+  - Includes simulation mode for testing without a real game
+  - Can capture real screenshots or use simulated boards
 
-<div align="center">
-  <table>
-    <tr>
-      <td align="center"><b>GPT-4o Gameplay</b></td>
-      <td align="center"><b>Claude-3.7 Gameplay</b></td>
-    </tr>
-    <tr>
-      <td>
-        <img src="assets/2048/gpt-4o.gif" width="300" height="300">
-      </td>
-      <td>
-        <img src="assets/2048/claude-3.7.gif" width="300" height="300">
-      </td>
-    </tr>
-  </table>
-</div>
+- **Usage**:
+  ```bash
+  # Use Gemini Flash (default)
+  python tetris_ai_iterator.py
+  
+  # Use Gemini Pro Experimental
+  python tetris_ai_iterator.py --use-pro-exp
+  
+  # Use Qwen model
+  python tetris_ai_iterator.py --use-qwen
+  
+  # Use OpenAI o3-mini via OpenRouter
+  python tetris_ai_iterator.py --use-o3
+  
+  # Use OpenAI o3-mini directly
+  python tetris_ai_iterator.py --use-o3-direct
+  
+  # Use simulation mode with complex board
+  python tetris_ai_iterator.py --complex
+  
+  # Use real screenshots instead of simulation
+  python tetris_ai_iterator.py --no-simulate
+  ```
 
-### Tetris AI Gameplay
+### tetris_claude_iterator.py
 
-<div align="center">
-  <table>
-    <tr>
-      <td align="center"><b>Claude-3.7 Gameplay</b></td>
-    </tr>
-    <tr>
-      <td>
-        <img src="assets/tetris/tetris-demo.gif" width="400" height="400">
-      </td>
-    </tr>
-  </table>
-</div>
+This file specifically uses Claude models from Anthropic to play Tetris:
 
-## Introduction
+- **Supported Models**:
+  - Claude 3.7 Sonnet (default)
+  - Other Claude models can be specified with the --model parameter
 
-The goal of this repo is to provide an easy solution of deploying computer use agents (CUAs) that run on your PC and laptops. As part of LMGames, our current focus is on building local gaming agents.
+- **Key Features**:
+  - Designed specifically for Claude models
+  - Direct integration with Anthropic's API
+  - Includes simulation capabilities for testing
+  - Provides detailed logging of Claude's responses
+  - Can capture real screenshots or use simulated boards
 
-Current features:
+- **Usage**:
+  ```bash
+  # Use default Claude model
+  python tetris_claude_iterator.py
+  
+  # Specify a different Claude model
+  python tetris_claude_iterator.py --model claude-3-opus-20240229
+  
+  # Use simulation mode with complex board
+  python tetris_claude_iterator.py --complex
+  
+  # Use real screenshots instead of simulation
+  python tetris_claude_iterator.py --no-simulate
+  ```
 
-- Gaming agents for Platformer and Atari games.
+### tetris_gemini_iterator.py
 
-## Installation
+This file is designed to use Google's Gemini models via OpenRouter:
 
-1. Clone this repository:
+- **Supported Models**:
+  - Gemini 2.0 Flash (default)
+  - Gemini Pro 2.0 Experimental
+
+- **Key Features**:
+  - Optimized for Gemini models
+  - Uses OpenRouter to access Gemini
+  - Includes simulation capabilities
+  - Provides detailed logging of responses
+  - Supports different output directories for different models
+
+- **Usage**:
+  ```bash
+  # Use default Gemini model
+  python tetris_gemini_iterator.py
+  
+  # Use Gemini Pro Experimental
+  python tetris_gemini_iterator.py --use-pro-exp
+  
+  # Use simulation mode with complex board
+  python tetris_gemini_iterator.py --complex
+  
+  # Use real screenshots instead of simulation
+  python tetris_gemini_iterator.py --no-simulate
+  ```
+
+## How It Works
+
+The AI iterators follow this general process:
+
+1. **Capture Game State**: Either take a screenshot of the actual Tetris game or generate a simulated board
+2. **Send to AI Model**: Send the image to the selected AI model (Claude, Gemini, etc.)
+3. **Get Move Suggestions**: The AI analyzes the board and suggests moves as Python code
+4. **Execute Moves**: The system executes the suggested moves using PyAutoGUI
+5. **Wait for Next Iteration**: Wait for user input (space key) to continue to the next move
+
+The system can be used with a real Tetris game or in simulation mode for testing and development.
+
+## Quick Start Methods
+
+We provide several simple ways to start:
+
+### Windows Users
+
+Simply double-click to run:
 ```
-git clone https://github.com/lmgame-org/GamingAgent.git
-cd GamingAgent
-```
-2. Install dependency:
-```
-conda create -n game_cua python==3.10 -y
-pip install -r requirements.txt
-```
-
-## APIs
-
-Currently we support gaming agents based on the following models:
-
-- OpenAI:
-  - gpt-4o
-  - gpt-4o-mini
-  - o1
-- Anthropic:
-  - claude-3-5-sonnet-20241022
-  - claude-3-7-sonnet-20250219
-- Gemini:
-  - gemini-1.5-pro
-
-Set your API keys with:
-
-```
-export OPENAI_API_KEY={YOUR_OPENAI_API_KEY}
-export ANTHROPIC_API_KEY={YOUR_ANTHROPIC_API_KEY}
-export GEMINI_API_KEY={your_GEMINI_API_KEY}
-```
-
-⚠️ Due to concurrency, deploying the agent with high-end models (and a large number of workers) could incur higher cost.
-
-## Games
-
-### Super Mario Bros (1985 by Nintendo)
-
-#### Game Installation
-
-Install your Super Mario Bros game. In our demo, we adopt [SuperMarioBros-C](https://github.com/MitchellSternke/SuperMarioBros-C).
-
-Navigate to the repo and follow the installation instructions.
-
-#### Launch Gaming Agent
-
-1. Once the game is built, download and move the ROM file:
-```
-mv path-to-your-ROM-file/"Super Mario Bros. (JU) (PRG0) [!].nes" $YOUR_WORKPLACE/SuperMarioBros-C/build/
-```
-
-2. Launch the game with
-```
-cd $YOUR_WORKPLACE/SuperMarioBros-C/build
-./smbc
+start_tetris.bat
 ```
 
-3. Full screen the game by pressing `F`. You should be able to see:
+This batch file will automatically:
+1. Detect and try to activate the game_cua environment (if it exists)
+2. Launch the Tetris AI agent
 
-<p align="center">
-<img src="assets/super_mario_bros/home.png" alt="super_mario" width="400" align="center">
-</p>
+### Linux/Mac Users
 
-4. Open another screen, launch your agent in terminal with
-```
-cd $YOUR_WORKPLACE/GamingAgent
-python games/superMario/mario_agent.py --api_provider {your_favorite_api_provider} --model_name {official_model_codename}
-```
-
-5. Due to concurrency issue, sometimes the agent will temporarily pause your game by pressing `Enter`. To avoid the issue, you can launch the agent only after entering the game upon seeing:
-
-<p align="center">
-<img src="assets/super_mario_bros/level_1.png" alt="super_mario_level_1" width="400" align="center">
-</p>
-
-#### Other command options
-```
---concurrency_interval: Interval in seconds between starting workers.
-
---api_response_latency_estimate: Estimated API response latency in seconds.
-
---policy: 'long', 'short', 'alternate' or 'mixed'. In 'long' or 'short' modes only those workers are enabled.
+Run in terminal:
+```bash
+# First add execution permission
+chmod +x start_tetris.sh
+# Then run
+./start_tetris.sh
 ```
 
-#### Build your own policy
+### Run Directly with Python
 
-
-You can implement your own policy in `mario_agent.py`! Deploying high-concurrency strategy with short-term planning streaming workers vs. low-concurrency strategy with long-term planning workers, or a mix of both.
-
-In our early experiments, 'alternate' policy performs well. Try it yourself and find out which one works better!
-
-### 2048
-
-2048 is a sliding tile puzzle game where players merge numbered tiles to reach the highest possible value. In our demo, we adopt and modify [2048-Pygame](https://github.com/rajitbanerjee/2048-pygame) 
-
-#### Game Set Up
-
-Run the 2048 game with a defined window size:
-```sh
-python games/game_2048/game_logic.py -wd 600 -ht 600
-```
-<p align="center">
-<img src="assets/2048/2048_sample.png" alt="2048" width="400" align="center">
-</p>
-
-Use **Ctrl** to restart the game and the **arrow keys** to move tiles strategically.
-
-Start the AI agent to play automatically:
-
-```sh
-python games/game_2048/2048_agent.py
+If you have already activated the correct environment, you can run directly:
+```bash
+# Run in the GamingAgent directory
+python run_tetris.py
 ```
 
+## Advanced Launch Options
 
-#### Other command options
-```
---api_provider: API provider to use.
+You can add these command-line arguments to customize behavior:
 
---model_name: Model name (has to come with vision capability).
+```bash
+# Display detailed AI output
+python run_tetris.py --verbose_output
 
-```
+# Save AI responses to files
+python run_tetris.py --save_responses
 
+# Manually specify game window position (if auto-detection has issues)
+python run_tetris.py --manual_window --window_left 100 --window_top 100 --window_width 800 --window_height 700
 
-### Tetris
+# Use different API providers
+python run_tetris.py --api_provider openai --model_name gpt-4o
 
-#### Game Installation
-
-Install your Tetris game. In our demo, we adopt [Python-Tetris-Game-Pygame](https://github.com/rajatdiptabiswas/tetris-pygame).
-
-#### Launch Gaming Agent
-
-1. Launch the game with
-```
-python games.tetris.tetris_agent.py
-
-cd $YOUR_WORKPLACE/Python-Tetris-Game-Pygame
-python main.py
+# View all available options
+python run_tetris.py --help
 ```
 
-⚠️ In your Tetris implementation, Modify game speed to accomodate for AI gaming agent latency. For example, in the provided implementation, navigate to `main.py`, line 23: change event time to 500~600ms.
+## Game Controls
 
-You should be able to see:
+During gameplay:
+- Press `q` to stop all threads and the game
+- Press `A` in the game window to toggle between AI/player control
+- Press `ESC` in the game window to exit the game
+- Press `R` in the game window to restart the game (when game is over)
 
-<p align="center">
-<img src="assets/tetris/gameplay.png" alt="tetris_game" width="400" align="center">
-</p>
+## Troubleshooting
 
-2. Adjust Agent's Field of Vision. Either full screen your game or adjust screen region in `/games/tetris/workers.py`, line 67 to capture only the gameplay window. For example, in `Python-Tetris-Game-Pygame` with MacBook Pro, change the line to `region = (0, 0, screen_width // 32 * 9, screen_height // 32 * 20)`.
+1. **Game window doesn't display**
+   - Make sure your system supports Pygame graphical interface
+   - Check if all dependencies are installed: `pip install -r requirements.txt`
 
-3. Open another screen, launch your agent in terminal with
-```
-cd $YOUR_WORKPLACE/GamingAgent
-python games/tetris/tetris_agent.py
-```
+2. **Module not found error**
+   - Make sure you're running the program in the correct directory (GamingAgent)
+   - Ensure you've activated the correct conda environment: `conda activate game_cua`
 
-#### Enhanced Logging and Screenshot Features
+3. **Game window cannot be automatically detected**
+   - Start with manual window parameters: `python run_tetris.py --manual_window`
 
-For more detailed logging and enhanced screenshot capabilities, we provide an enhanced launcher:
-
-```
-cd $YOUR_WORKPLACE/GamingAgent
-python run_tetris_enhanced.py
-```
-
-This enhanced version provides:
-- Automatic periodic screenshots (every 5 seconds by default)
-- Enhanced logging with timestamps and detailed game state information
-- Screenshots saved in organized folders with timestamps and descriptions
-- All game states screenshots preserved for analysis
-- Complete model responses saved to text files for review
-- Adaptive control timing to allow controlling multiple pieces per API call
-
-You can customize these features with additional parameters:
-```
-python run_tetris_enhanced.py --screenshot-interval=10 --no-enhanced-logging --plan-seconds=90 --execution-mode=slow
-```
-
-Parameters include:
-- `--screenshot-interval=N`: Take screenshots every N seconds (default: 5)
-- `--no-enhanced-logging`: Disable enhanced logging
-- `--no-save-all-states`: Don't save screenshots for all game states
-- `--plan-seconds=N`: Set planning cycle time in seconds (default: 60)
-- `--execution-mode=MODE`: Set execution mode (adaptive, fast, slow)
-- `--piece-limit=N`: Limit pieces controlled per API call (0 = unlimited)
-
-All logs and screenshots are saved in a timestamped folder under `game_logs/session_YYYYMMDD_HHMMSS/` for easy reference. Model responses are saved in `thread_X_responses/` subfolders.
-
-#### Other command options
-```
---api_provider: API provider to use.
-
---model_name: Model name (has to come with vision capability).
-
---concurrency_interval: Interval in seconds between consecutive workers.
-
---api_response_latency_estimate: Estimated API response latency in seconds.
-
---policy: 'fixed', only one policy is supported for now.
-```
-
-#### Build your own policy
-
-Currently we find single-worker agent is able to make meaningful progress in the Tetris game. If the gaming agent spawns multiple independent workers, they don't coordinate well. We will work on improving the agent and gaming policies. We also welcome your thoughts and contributions.
+4. **API key errors**
+   - Ensure you have the correct API keys in your .env file:
+     - ANTHROPIC_API_KEY for Claude models
+     - OPENROUTER_API_KEY for OpenRouter models
+     - OPENAI_API_KEY for direct OpenAI models 
