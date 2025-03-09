@@ -6,6 +6,42 @@ This is an AI agent system that can automatically play Tetris. The system uses A
 
 The system includes multiple AI iterator files that can be used to control Tetris with different AI models. These are the core components of the system:
 
+### tetris_claude_iterator.py
+
+This file specifically uses Claude models from Anthropic to play Tetris:
+
+- **Visual Example**:
+  
+  ![Claude playing Tetris](assets/tetris/claude.gif)
+  
+  *Claude AI playing Tetris through vision-based analysis*
+
+- **Supported Models**:
+  - Claude 3.7 Sonnet (default)
+  - Other Claude models can be specified with the --model parameter
+
+- **Key Features**:
+  - Designed specifically for Claude models
+  - Direct integration with Anthropic's API
+  - Includes simulation capabilities for testing
+  - Provides detailed logging of Claude's responses
+  - Can capture real screenshots or use simulated boards
+
+- **Usage**:
+  ```bash
+  # Use default Claude model
+  python tetris_claude_iterator.py
+  
+  # Specify a different Claude model
+  python tetris_claude_iterator.py --model claude-3-opus-20240229
+  
+  # Use simulation mode with complex board
+  python tetris_claude_iterator.py --complex
+  
+  # Use real screenshots instead of simulation
+  python tetris_claude_iterator.py --no-simulate
+  ```
+
 ### tetris_ai_iterator.py
 
 This is the main, unified iterator that supports multiple AI models through different providers:
@@ -48,41 +84,7 @@ This is the main, unified iterator that supports multiple AI models through diff
   python tetris_ai_iterator.py --no-simulate
   ```
 
-### tetris_claude_iterator.py
 
-This file specifically uses Claude models from Anthropic to play Tetris:
-
-- **Supported Models**:
-  - Claude 3.7 Sonnet (default)
-  - Other Claude models can be specified with the --model parameter
-
-- **Key Features**:
-  - Designed specifically for Claude models
-  - Direct integration with Anthropic's API
-  - Includes simulation capabilities for testing
-  - Provides detailed logging of Claude's responses
-  - Can capture real screenshots or use simulated boards
-
-- **Visual Example**:
-  
-  ![Claude playing Tetris](assets/tetris/claude.gif)
-  
-  *Claude AI playing Tetris through vision-based analysis*
-
-- **Usage**:
-  ```bash
-  # Use default Claude model
-  python tetris_claude_iterator.py
-  
-  # Specify a different Claude model
-  python tetris_claude_iterator.py --model claude-3-opus-20240229
-  
-  # Use simulation mode with complex board
-  python tetris_claude_iterator.py --complex
-  
-  # Use real screenshots instead of simulation
-  python tetris_claude_iterator.py --no-simulate
-  ```
 
 ### tetris_gemini_iterator.py
 
