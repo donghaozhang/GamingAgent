@@ -273,7 +273,9 @@ class OpenAIProvider:
         Args:
             model (str): The name of the model to use on OpenAI API, default is o3-mini.
                         Available models:
-                        - "o3-mini" (OpenAI o3-mini model)
+                        - "o3-mini" (OpenAI o3-mini model) - TEXT ONLY, no vision capabilities
+                        - "gpt-4-vision-preview" - Has vision capabilities
+                        - "gpt-4-turbo" - Has vision capabilities
         """
         self.model = model
         # Verify API key is available
@@ -286,6 +288,13 @@ class OpenAIProvider:
             api_key=self.api_key
         )
         
+        # Check and warn if using a non-vision model
+        vision_capable = "vision" in model.lower() or "gpt-4" in model.lower()
+        if not vision_capable:
+            print(f"Note: Model {model} is a TEXT-ONLY model and does not support image analysis.")
+            print("For vision capabilities, use models like 'gpt-4-vision-preview' or 'gpt-4-turbo'.")
+            print("Image will be automatically skipped for this model, and the code will function using text-only prompts.")
+        
     def get_response(self, prompt, base64_image=None):
         """
         Get a response from the model through OpenAI API.
@@ -297,41 +306,6 @@ class OpenAIProvider:
         Returns:
             str: The model's response text.
         """
-        # Create a messages array for the API request
-        messages = []
-        
-        # Create content array to hold image and text
-        message_content = []
-        
-        # Add text content
-        message_content.append({
-            "type": "text", 
-            "text": prompt
-        })
-        
-        # Add image if provided
-        if base64_image:
-            try:
-                # Add full data URL if not present
-                if not base64_image.startswith("data:"):
-                    base64_image = f"data:image/png;base64,{base64_image}"
-                    
-                # Add image in OpenAI format
-                message_content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": base64_image
-                    }
-                })
-            except Exception as e:
-                print(f"Error processing image: {e}")
-        
-        # Add message with content
-        messages.append({
-            "role": "user",
-            "content": message_content
-        })
-        
         # System prompt for Tetris
         system_prompt = """Analyze the current Tetris board state and generate PyAutoGUI code to control Tetris 
 for the current piece. Your code will be executed to control the game.
@@ -367,16 +341,63 @@ Here's the current Tetris game state image:
 """
         
         try:
-            # Call the OpenAI API
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            # Skip image for o3-mini model which doesn't support vision
+            used_base64_image = None if "o3-mini" in self.model else base64_image
+            
+            # Create message content based on whether we have an image
+            if used_base64_image is None:
+                messages = [
                     {"role": "system", "content": system_prompt},
-                    *messages
-                ],
-                max_tokens=1024,
-                temperature=0.2
-            )
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": prompt
+                            }
+                        ]
+                    }
+                ]
+            else:
+                # Ensure image has proper format
+                if not used_base64_image.startswith("data:"):
+                    used_base64_image = f"data:image/png;base64,{used_base64_image}"
+                
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": prompt
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": used_base64_image
+                                }
+                            }
+                        ]
+                    }
+                ]
+            
+            # Determine correct token parameter based on model
+            token_param = "max_completion_tokens" if "o3-mini" in self.model else "max_tokens"
+            
+            # Prepare request parameters dynamically
+            request_params = {
+                "model": self.model,
+                "messages": messages,
+                token_param: 1024
+            }
+            
+            # Only add temperature if the model supports it
+            if "o3-mini" not in self.model:
+                request_params["temperature"] = 0.2
+            
+            # Call the OpenAI API with the prepared parameters
+            response = self.client.chat.completions.create(**request_params)
             
             # Return the text from the response
             if hasattr(response, 'choices') and len(response.choices) > 0:
@@ -1288,6 +1309,7 @@ def main():
     parser.add_argument("--use-qwen", action="store_true", help=f"Use Qwen2.5 VL 72B Instruct model ({MODEL_QWEN_VL})")
     parser.add_argument("--use-o3", action="store_true", help=f"Use OpenAI o3-mini-high model via OpenRouter ({MODEL_O3_MINI})")
     parser.add_argument("--use-o3-direct", action="store_true", help=f"Use OpenAI o3-mini model directly via OpenAI API ({MODEL_O3_MINI_DIRECT})")
+    parser.add_argument("--use-gpt4-vision", action="store_true", help=f"Use OpenAI GPT-4 Vision model directly via OpenAI API (requires OPENAI_API_KEY)")
     parser.add_argument("--output-dir", type=str, help=f"Output directory (default: based on model)")
     parser.add_argument("--window-title", type=str, default=TETRIS_WINDOW_TITLE, 
                         help=f"Window title to look for (default: '{TETRIS_WINDOW_TITLE}')")
@@ -1310,24 +1332,29 @@ def main():
     if args.cleanup:
         cleanup_txt_files()
     
-    # Set the model based on command-line arguments
-    selected_model = args.model
+    # Process model selection
+    model = args.model
     use_direct_openai = False
     
-    # Determine which model to use
     if args.use_pro_exp:
-        selected_model = MODEL_GEMINI_PRO_EXP
-        print(f"Using Gemini Pro 2.0 Experimental model: {selected_model}")
+        model = MODEL_GEMINI_PRO_EXP
+        print(f"Using Gemini Pro 2.0 Experimental model: {model}")
     elif args.use_qwen:
-        selected_model = MODEL_QWEN_VL
-        print(f"Using Qwen2.5 VL 72B Instruct model: {selected_model}")
+        model = MODEL_QWEN_VL
+        print(f"Using Qwen VL model: {model}")
     elif args.use_o3:
-        selected_model = MODEL_O3_MINI
-        print(f"Using OpenAI o3-mini-high model via OpenRouter: {selected_model}")
+        model = MODEL_O3_MINI
+        print(f"Using OpenAI o3-mini-high model via OpenRouter: {model}")
     elif args.use_o3_direct:
-        selected_model = MODEL_O3_MINI_DIRECT
+        model = MODEL_O3_MINI_DIRECT
         use_direct_openai = True
-        print(f"Using OpenAI o3-mini model directly via OpenAI API: {selected_model}")
+        print(f"Using OpenAI o3-mini model directly via OpenAI API: {model}")
+    elif args.use_gpt4_vision:
+        model = "gpt-4-vision-preview"
+        use_direct_openai = True
+        print(f"Using OpenAI GPT-4 Vision model directly via OpenAI API: {model}")
+    else:
+        print(f"Using default model: {model}")
     
     # Determine which output directory to use
     if args.output_dir:
@@ -1335,10 +1362,10 @@ def main():
         selected_output_dir = args.output_dir
     else:
         # Choose based on model
-        if "qwen" in selected_model.lower():
+        if "qwen" in model.lower():
             selected_output_dir = OUTPUT_DIR_QWEN
             print(f"Using Qwen output directory: {selected_output_dir}")
-        elif "o3" in selected_model.lower() or "openai" in selected_model.lower():
+        elif "o3" in model.lower() or "openai" in model.lower():
             selected_output_dir = OUTPUT_DIR_O3
             print(f"Using O3 output directory: {selected_output_dir}")
         else:
@@ -1347,7 +1374,7 @@ def main():
     
     # Create and run the iterator with custom settings
     iterator = TetrisAIIterator(
-        model=selected_model, 
+        model=model, 
         output_dir=selected_output_dir, 
         window_title=args.window_title,
         save_responses=args.save_responses,
