@@ -81,28 +81,25 @@ TETRIS_WINDOW_TITLE = "Simple Tetris"  # Window title to look for
 
 class OpenRouterProvider:
     """
-    Provider class for OpenRouter API integration.
-    This class allows access to various LLMs, including Gemini, through the OpenRouter API.
+    Provider for OpenRouter API, supporting Claude and other models
     """
     
-    def __init__(self, model=MODEL_GEMINI_FLASH):
+    def __init__(self, model, api_key=None):
         """
-        Initialize the OpenRouter provider with the specified model.
+        Initialize the OpenRouter provider
         
         Args:
-            model (str): The name of the model to use on OpenRouter, default is Gemini 2.0 Flash.
-                        Available models:
-                        - "google/gemini-2.0-flash-001" (Gemini 2.0 Flash)
-                        - "google/gemini-2.0-pro-exp-02-05:free" (Gemini 2.0 Pro Experimental)
-                        - "qwen/qwen2.5-vl-72b-instruct:free" (Qwen2.5 VL 72B Instruct)
+            model (str): Model name to use
+            api_key (str, optional): OpenRouter API key. If None, loads from environment
         """
-        self.model = model
-        # Verify API key is available
-        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        # Use provided API key or load from environment
+        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY environment variable not set. Please check your .env file.")
+            
+        self.model = model
         
-        # Initialize the OpenAI client with OpenRouter base URL and default headers
+        # Initialize OpenAI client with OpenRouter base URL
         self.client = OpenAI(
             api_key=self.api_key,
             base_url="https://openrouter.ai/api/v1"
@@ -122,7 +119,7 @@ class OpenRouterProvider:
         # Create a messages array for the API request
         messages = []
         
-        # Create content array to hold image and text if Claude model
+        # Create content array to hold image and text based on model type
         if "anthropic/claude" in self.model:
             # Claude format with content array
             content = []
@@ -143,8 +140,9 @@ class OpenRouterProvider:
                             "data": base64_image,
                         },
                     })
+                    print(f"Added image to Claude request, image size: {len(base64_image)} bytes")
                 except Exception as e:
-                    print(f"Error processing image: {e}")
+                    print(f"Error processing image for Claude: {e}")
             
             # Add text prompt to content
             content.append({
@@ -157,8 +155,57 @@ class OpenRouterProvider:
                 "role": "user",
                 "content": content
             })
+        elif "qwen" in self.model.lower():
+            # Qwen format - needs specific handling for images
+            # Create user message content array
+            message_content = []
+            
+            # Add text first (important for Qwen)
+            message_content.append({
+                "type": "text", 
+                "text": prompt
+            })
+            
+            # Add image if provided
+            if base64_image:
+                try:
+                    # Format image properly for Qwen
+                    if not base64_image.startswith("data:"):
+                        # Add proper data URL prefix for JPEG if using our JPEG encoder
+                        if "qwen" in self.model.lower():
+                            image_data_url = f"data:image/jpeg;base64,{base64_image}"
+                        else:
+                            image_data_url = f"data:image/png;base64,{base64_image}"
+                    else:
+                        # Already has data URL prefix
+                        image_data_url = base64_image
+                    
+                    # Add image in OpenAI-compatible format that Qwen uses
+                    message_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": image_data_url
+                        }
+                    })
+                    
+                    # Calculate size for logging
+                    if "," in image_data_url:
+                        size = len(image_data_url.split(",", 1)[1])
+                    else:
+                        size = len(image_data_url)
+                        
+                    print(f"Added image to Qwen request, image size: {size} bytes")
+                except Exception as e:
+                    print(f"Error processing image for Qwen: {str(e)}")
+                    traceback.print_exc()
+            
+            # Add message with content
+            messages.append({
+                "role": "user",
+                "content": message_content
+            })
         else:
-            # For non-Claude models use standard OpenAI format
+            # For other models use standard OpenAI format
             message_content = []
             
             # Add text content
@@ -181,8 +228,9 @@ class OpenRouterProvider:
                             "url": base64_image
                         }
                     })
+                    print(f"Added image to standard request, image size: {len(base64_image)} bytes")
                 except Exception as e:
-                    print(f"Error processing image: {e}")
+                    print(f"Error processing image for standard model: {e}")
             
             # Add message with content
             messages.append({
@@ -241,84 +289,238 @@ class OpenRouterProvider:
             return random.choice(fallback_responses)
 
 
+class QwenRouterProvider(OpenRouterProvider):
+    """
+    Provider specifically for Qwen2.5 VL model via OpenRouter API
+    Uses the same approach as the successful qwen_vl_demo.py
+    """
+    
+    def __init__(self, model, api_key=None):
+        """
+        Initialize the QwenRouter provider
+        
+        Args:
+            model (str): Model name to use, should be a Qwen model
+            api_key (str, optional): OpenRouter API key. If None, loads from environment
+        """
+        super().__init__(model, api_key)
+        if "qwen" not in model.lower():
+            print("Warning: Using QwenRouterProvider with a non-Qwen model may not work correctly")
+    
+    def encode_image(self, image):
+        """
+        Encode image specifically for Qwen models
+        
+        Args:
+            image (PIL.Image): PIL Image to encode
+            
+        Returns:
+            str: Data URL with base64-encoded image
+        """
+        if image is None:
+            print("Error: Cannot encode None image")
+            return None
+            
+        try:
+            # Convert to JPEG format
+            buffered = BytesIO()
+            image.save(buffered, format="JPEG", quality=95)
+            base64_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            
+            # Return data URL in format expected by Qwen
+            data_url = f"data:image;base64,{base64_image}"
+            print(f"Encoded image for Qwen, size: {len(base64_image)} bytes")
+            return data_url
+        except Exception as e:
+            print(f"Error encoding image for Qwen: {e}")
+            traceback.print_exc()
+            return None
+    
+    def get_response(self, prompt, image):
+        """
+        Get a response from Qwen through OpenRouter API.
+        
+        Args:
+            prompt (str): The text prompt to send to the model.
+            image (PIL.Image): The image to analyze.
+            
+        Returns:
+            str: The model's response text.
+        """
+        try:
+            # Prepare the image if provided
+            if image:
+                image_data_url = self.encode_image(image)
+            else:
+                print("Warning: No image provided to QwenRouterProvider")
+                image_data_url = None
+            
+            # Create the content array for the message
+            content = []
+            
+            # According to Qwen documentation, for images it expects:
+            # {"type": "image", "image": "data:image;base64,/9j/..."}
+            # Add image if provided (first, as Qwen seems to prefer image before text)
+            if image_data_url:
+                content.append({
+                    "type": "image", 
+                    "image": image_data_url
+                })
+            
+            # Add text content
+            content.append({
+                "type": "text", 
+                "text": prompt
+            })
+            
+            # System prompt for Tetris
+            system_prompt = """You are an AI assistant that helps play Tetris. 
+            Analyze the current game state and suggest the best move for the current piece.
+            Return valid PyAutoGUI commands to move the current piece.
+            Use pyautogui.press("left"), pyautogui.press("right"), pyautogui.press("up") for rotation, and pyautogui.press("down") for faster drop.
+            Your goal is to clear as many lines as possible.
+            
+            IMPORTANT: First describe what you see on the board (current piece type, next piece, and any existing pieces).
+            Then format your response as Python code within triple backticks, like this:
+            ```python
+            # Move left to position better
+            pyautogui.press("left")
+            # Rotate for better fit
+            pyautogui.press("up")
+            ```
+            """
+            
+            # Call the API
+            response = self.client.chat.completions.create(
+                extra_headers={
+                    "HTTP-Referer": "https://github.com/lmgame-org/GamingAgent",
+                    "X-Title": "Tetris AI Player"
+                },
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": content}
+                ],
+                max_tokens=1024,
+                temperature=0.2
+            )
+            
+            # Extract and return the response
+            if hasattr(response, 'choices') and len(response.choices) > 0:
+                return response.choices[0].message.content
+            return "No valid response from OpenRouter"
+            
+        except Exception as e:
+            # Print the error for debugging
+            print(f"Error calling OpenRouter API for Qwen: {e}")
+            traceback.print_exc()
+            
+            # Fallback responses for when the API call fails
+            fallback_responses = [
+                "```python\n# Move left to position the piece better\npyautogui.press('left')\n# Rotate to fit better\npyautogui.press('up')\n```",
+                "```python\n# Move right to position the piece\npyautogui.press('right')\n# Drop the piece\npyautogui.press('space')\n```",
+                "```python\n# Rotate the piece for better fit\npyautogui.press('up')\n# Position it correctly\npyautogui.press('right')\n```"
+            ]
+            return random.choice(fallback_responses)
+
+
 class TetrisAIIterator:
     def __init__(self, model=None, output_dir=None, window_title=None, save_responses=False):
-        self.client = OpenRouterProvider(model=model or MODEL)
+        """
+        Initialize the Tetris AI Iterator
+        
+        Args:
+            model (str): The model to use (from OpenRouter)
+            output_dir (str): Directory to save output files
+            window_title (str): Window title to look for (None for simulated board)
+            save_responses (bool): Whether to save API responses to files
+        """
+        # If the model contains "qwen", use the specialized Qwen provider
+        self.use_qwen = "qwen" in (model or "").lower() or "qwen" in (MODEL or "").lower()
+        
+        if self.use_qwen:
+            print(f"Using specialized QwenRouterProvider for model: {model or MODEL}")
+            self.client = QwenRouterProvider(model=model or MODEL)
+        else:
+            self.client = OpenRouterProvider(model=model or MODEL)
+        
         self.iteration = 0
         self.stop_flag = False
-        
-        # Use provided arguments or fall back to global defaults
         self.model = model or MODEL
-        self.output_dir = output_dir or OUTPUT_DIR
-        self.window_title = window_title or TETRIS_WINDOW_TITLE
-        self.save_responses = save_responses
         
-        self.session_dir = os.path.join(self.output_dir, f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+        # Use appropriate default output directory based on model
+        if "claude" in self.model.lower():
+            default_output_dir = "claude_tetris_outputs"
+        elif "qwen" in self.model.lower():
+            default_output_dir = "qwen_tetris_outputs"
+        elif "o3" in self.model.lower():
+            default_output_dir = "o3_tetris_outputs"
+        else:
+            default_output_dir = "gemini_tetris_outputs"
+        
+        self.output_dir = output_dir or default_output_dir
+        print(f"Using {self.output_dir.split('_')[0].capitalize()} output directory: {self.output_dir}")
+        
+        # Create timestamp for this session
+        self.session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Create session directory
+        self.session_dir = os.path.join(self.output_dir, f"session_{self.session_timestamp}")
+        os.makedirs(self.session_dir, exist_ok=True)
+        
+        # Create screenshots directory within the session directory
         self.screenshots_dir = os.path.join(self.session_dir, "screenshots")
-        self.responses_dir = os.path.join(self.session_dir, "responses") if save_responses else None
-        self.manual_window_position = None
-        
-        # Simulation mode flag and state
-        self.use_simulated_board = True  # Default to True
-        self.simulated_board = None
-        self.board_state = None
-        self.current_piece = None
-        self.next_piece = None
-        
-        # Create output directories
         os.makedirs(self.screenshots_dir, exist_ok=True)
-        if self.save_responses:
+        
+        # Create responses directory if saving responses
+        self.save_responses = save_responses
+        if save_responses:
+            self.responses_dir = os.path.join(self.session_dir, "responses")
             os.makedirs(self.responses_dir, exist_ok=True)
         
-        # Create log file
-        self.log_path = os.path.join(self.session_dir, "session_log")
-        with open(self.log_path, "w", encoding="utf-8") as f:
-            f.write(f"=== Tetris AI Iterator Session started at {datetime.now()} ===\n\n")
-            f.write(f"Model: {self.model}\n")
-            f.write(f"Window title: {self.window_title}\n")
-            f.write(f"Output directory: {self.session_dir}\n\n")
+        # Initialize session log file
+        self.session_log_path = os.path.join(self.session_dir, "session_log")
         
-        # System prompt
-        self.system_prompt = """You are an expert Tetris player. 
-Your task is to analyze the current Tetris board and suggest the best moves for the current piece.
-Be strategic about your moves, considering the current piece and the next piece if visible."""
+        # Set up window title for capturing screenshots
+        self.window_title = window_title
+        
+        # Initialize simulation flags and state
+        self.use_simulated_board = True  # Default to using simulated board
+        self.simulated_board = None
+        self.manual_window_position = None
+        
+        # Initialize board state
+        self.board_state = [[0 for _ in range(10)] for _ in range(20)]
+        
+        # Initialize current piece
+        self.current_piece = {
+            'type': 'T',
+            'x': 4,
+            'y': 0,
+            'rotation': 0
+        }
+        
+        # Initialize next piece
+        self.next_piece = {'type': 'I'}
+        
+        # Instruction prompt for the model
+        self.instruction_prompt = """Analyze this Tetris board state and suggest the best move for the current piece. 
+Return valid PyAutoGUI commands to move the current piece.
+Format your response as Python code with explanatory comments.
 
-        # User instruction prompt
-        self.instruction_prompt = """Analyze the current Tetris board state and generate PyAutoGUI code to control Tetris 
-for the current piece. Your code will be executed to control the game.
+First, describe what you see on the board (current piece, next piece, and any existing pieces).
+Then, suggest a move using pyautogui commands.
 
-The speed pieces drop is at around ~0.75s/grid block.
-
-### General Tetris Controls (keybinds):
-- left: move piece left
-- right: move piece right
-- up: rotate piece clockwise
-- down: accelerated drop (if necessary)
-- space: drop piece immediately
-
-### Strategies and Caveats:
-0. Clear the horizontal rows as soon as possible.
-1. Prioritize keeping the stack flat and balanced
-2. Avoid creating holes
-3. If you see a chance to clear lines, do it
-4. Only control the current piece visible at the top
-
-### Output Format:
-First, briefly describe what you see on the board (current piece type, next piece, and any existing pieces).
-Then provide your move recommendations as Python code within triple backticks:
-
+Example:
 ```python
-# Move left to position better
+# Move left to position the piece better
 pyautogui.press("left")
-# Rotate for better fit
+# Rotate to fit better
 pyautogui.press("up")
+# Then drop the piece
+pyautogui.press("space")
 ```
-
-Here's the current Tetris game state image:
 """
-
-    # All other methods are the same as TetrisClaudeIterator except for the call_claude_api method
-    # which needs to be replaced with call_gemini_api
 
     def log_message(self, message):
         """Log a message to the console and log file"""
@@ -330,7 +532,7 @@ Here's the current Tetris game state image:
         
         # Save to log file
         try:
-            with open(self.log_path, "a", encoding="utf-8", errors="replace") as f:
+            with open(self.session_log_path, "a", encoding="utf-8", errors="replace") as f:
                 f.write(log_entry + "\n")
         except Exception as e:
             print(f"Error writing to log file: {e}")
@@ -675,9 +877,28 @@ Here's the current Tetris game state image:
 
     def encode_image(self, image):
         """Encode image to base64"""
-        buffered = BytesIO()
-        image.save(buffered, format="PNG")
-        return base64.b64encode(buffered.getvalue()).decode("utf-8")
+        if image is None:
+            self.log_message("Error: Cannot encode None image")
+            return None
+            
+        try:
+            buffered = BytesIO()
+            # For Qwen models, use JPEG format with high quality
+            if "qwen" in self.model.lower():
+                image.save(buffered, format="JPEG", quality=95)
+                self.log_message("Encoding image as JPEG format for Qwen model")
+                encoded = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            else:
+                # For other models, use PNG format
+                image.save(buffered, format="PNG")
+                encoded = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            
+            self.log_message(f"Successfully encoded image, size: {len(encoded)} bytes")
+            return encoded
+        except Exception as e:
+            self.log_message(f"Error encoding image: {str(e)}")
+            traceback.print_exc()
+            return None
 
     def is_valid_position(self, piece):
         """Check if the piece position is valid (not outside board or colliding)"""
@@ -777,13 +998,26 @@ Here's the current Tetris game state image:
         """Call model API via OpenRouter with the Tetris screenshot"""
         try:
             self.log_message(f"Calling model API via OpenRouter with model {self.model} (iteration {self.iteration})...")
+            
+            # Log image information
+            if image:
+                self.log_message(f"Image type: {type(image)}, size: {image.size if hasattr(image, 'size') else 'unknown'}")
+            else:
+                self.log_message("Warning: No image provided to call_model_api")
+                
             start_time = time.time()
             
-            # Encode image
-            base64_image = self.encode_image(image)
-            
-            # Call model API via OpenRouter
-            response = self.client.get_response(self.instruction_prompt, base64_image)
+            # For Qwen provider pass the image directly, for other providers encode it first
+            if self.use_qwen:
+                # Pass the PIL image directly to the specialized Qwen provider
+                response = self.client.get_response(self.instruction_prompt, image)
+            else:
+                # Encode image for standard provider
+                base64_image = self.encode_image(image)
+                self.log_message(f"Encoded image size: {len(base64_image) if base64_image else 0} bytes")
+                
+                # Call model API via OpenRouter
+                response = self.client.get_response(self.instruction_prompt, base64_image)
             
             elapsed_time = time.time() - start_time
             self.log_message(f"Model API response received in {elapsed_time:.2f}s")

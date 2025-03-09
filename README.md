@@ -6,13 +6,21 @@ This is an AI agent system that can automatically play Tetris. The system uses A
 
 The system includes multiple AI iterator files that can be used to control Tetris with different AI models. These are the core components of the system:
 
+### AI Model Comparison
+
+Below is a visual comparison of different AI models playing Tetris:
+
+| Claude 3.7 | Gemini 2.0 | OpenAI o3-mini | Qwen 2.5 VL |
+|:----------:|:----------:|:--------------:|:-----------:|
+| ![Claude playing Tetris](assets/tetris/claude.gif) | ![Gemini playing Tetris](assets/tetris/gemini.gif) | ![OpenAI playing Tetris](assets/tetris/openai.gif) | 
+| *Claude's vision-based analysis* | *Gemini's approach to Tetris* | *OpenAI's decision making* | 
+
+> Note: Some GIFs may be placeholders until recordings for all models are available.
+
 ### tetris_claude_iterator.py
 
 This file specifically uses Claude models from Anthropic to play Tetris:
 
-- **Visual Example**:
-  
-  ![Claude playing Tetris](assets/tetris/claude.gif)
   
   *Claude AI playing Tetris through vision-based analysis*
 
@@ -83,8 +91,6 @@ This is the main, unified iterator that supports multiple AI models through diff
   # Use real screenshots instead of simulation
   python tetris_ai_iterator.py --no-simulate
   ```
-
-
 
 ### tetris_gemini_iterator.py
 

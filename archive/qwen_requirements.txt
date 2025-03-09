@@ -1,0 +1,9 @@
+modelscope>=1.9.5
+torch>=2.0.0
+transformers>=4.36.0
+pillow>=9.0.0
+accelerate>=0.21.0
+torchvision>=0.15.0
+opencv-python>=4.8.0
+protobuf>=3.20.0,<4.0.0
+sentencepiece>=0.1.99 
