@@ -1,16 +1,30 @@
 #!/usr/bin/env python
 """
-Tetris Gemini Iterator
+Tetris AI Iterator
 
 This script creates a simple loop to:
 1. Capture the Tetris game screen
-2. Call Gemini API through OpenRouter to suggest moves
+2. Call AI models via OpenRouter or direct APIs to suggest moves
 3. Output the response
 4. Wait for space key press to continue
 5. Repeat the process
 
+Supported Models:
+- Gemini 2.0 Flash (default, via OpenRouter)
+- Gemini Pro 2.0 Experimental (via OpenRouter)
+- Qwen2.5 VL 72B Instruct (via OpenRouter)
+- OpenAI o3-mini-high (via OpenRouter)
+- OpenAI o3-mini (direct API)
+
 Usage:
-    python tetris_gemini_iterator.py
+    python tetris_ai_iterator.py [options]
+    
+Options:
+    --use-pro-exp    Use Gemini Pro 2.0 Experimental model
+    --use-qwen       Use Qwen2.5 VL 72B Instruct model
+    --use-o3         Use OpenAI o3-mini-high model via OpenRouter
+    --use-o3-direct  Use OpenAI o3-mini model directly via OpenAI API
+    --model MODEL    Use a custom model via OpenRouter
 
 Requirements:
     - PIL (Pillow)
@@ -18,7 +32,7 @@ Requirements:
     - pynput
     - requests
     - python-dotenv
-    - openai (for OpenRouter API)
+    - openai (for OpenRouter and OpenAI APIs)
 """
 
 import os
@@ -59,21 +73,25 @@ load_env_file()
 
 # Configuration
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
 if not OPENROUTER_API_KEY:
-    print("Error: OPENROUTER_API_KEY environment variable not found.")
-    print("Please create a .env file with your API key.")
+    print("Warning: OPENROUTER_API_KEY environment variable not found.")
+    print("Please create a .env file with your API key if you want to use OpenRouter models.")
     print("Example: OPENROUTER_API_KEY=your_api_key_here")
-    sys.exit(1)
 
 # Available models
 MODEL_GEMINI_FLASH = "google/gemini-2.0-flash-001"
 MODEL_GEMINI_PRO_EXP = "google/gemini-2.0-pro-exp-02-05:free"
 MODEL_QWEN_VL = "qwen/qwen2.5-vl-72b-instruct:free"
+MODEL_O3_MINI = "openai/o3-mini-high"  # OpenRouter version
+MODEL_O3_MINI_DIRECT = "o3-mini"  # Direct OpenAI version
 MODEL = MODEL_GEMINI_FLASH  # Default model (via OpenRouter)
 
 # Output directories
 OUTPUT_DIR_GEMINI = "gemini_tetris_outputs"
 OUTPUT_DIR_QWEN = "qwen_tetris_outputs"
+OUTPUT_DIR_O3 = "o3_tetris_outputs"
 OUTPUT_DIR = OUTPUT_DIR_GEMINI  # Default output directory
 
 TETRIS_WINDOW_TITLE = "Simple Tetris"  # Window title to look for
@@ -95,6 +113,7 @@ class OpenRouterProvider:
                         - "google/gemini-2.0-flash-001" (Gemini 2.0 Flash)
                         - "google/gemini-2.0-pro-exp-02-05:free" (Gemini 2.0 Pro Experimental)
                         - "qwen/qwen2.5-vl-72b-instruct:free" (Qwen2.5 VL 72B Instruct)
+                        - "openai/o3-mini-high" (OpenAI o3-mini-high)
         """
         self.model = model
         # Verify API key is available
@@ -241,9 +260,152 @@ class OpenRouterProvider:
             return random.choice(fallback_responses)
 
 
+class OpenAIProvider:
+    """
+    Provider class for direct OpenAI API integration.
+    This class allows access to OpenAI models directly without going through OpenRouter.
+    """
+    
+    def __init__(self, model=MODEL_O3_MINI_DIRECT):
+        """
+        Initialize the OpenAI provider with the specified model.
+        
+        Args:
+            model (str): The name of the model to use on OpenAI API, default is o3-mini.
+                        Available models:
+                        - "o3-mini" (OpenAI o3-mini model)
+        """
+        self.model = model
+        # Verify API key is available
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        if not self.api_key:
+            raise ValueError("OPENAI_API_KEY environment variable not set. Please check your .env file.")
+        
+        # Initialize the OpenAI client
+        self.client = OpenAI(
+            api_key=self.api_key
+        )
+        
+    def get_response(self, prompt, base64_image=None):
+        """
+        Get a response from the model through OpenAI API.
+        
+        Args:
+            prompt (str): The text prompt to send to the model.
+            base64_image (str, optional): Base64-encoded image data.
+            
+        Returns:
+            str: The model's response text.
+        """
+        # Create a messages array for the API request
+        messages = []
+        
+        # Create content array to hold image and text
+        message_content = []
+        
+        # Add text content
+        message_content.append({
+            "type": "text", 
+            "text": prompt
+        })
+        
+        # Add image if provided
+        if base64_image:
+            try:
+                # Add full data URL if not present
+                if not base64_image.startswith("data:"):
+                    base64_image = f"data:image/png;base64,{base64_image}"
+                    
+                # Add image in OpenAI format
+                message_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": base64_image
+                    }
+                })
+            except Exception as e:
+                print(f"Error processing image: {e}")
+        
+        # Add message with content
+        messages.append({
+            "role": "user",
+            "content": message_content
+        })
+        
+        # System prompt for Tetris
+        system_prompt = """Analyze the current Tetris board state and generate PyAutoGUI code to control Tetris 
+for the current piece. Your code will be executed to control the game.
+
+The speed pieces drop is at around ~0.75s/grid block.
+
+### General Tetris Controls (keybinds):
+- left: move piece left
+- right: move piece right
+- up: rotate piece clockwise
+- down: accelerated drop (if necessary)
+- space: drop piece immediately
+
+### Strategies and Caveats:
+0. Clear the horizontal rows as soon as possible.
+1. Prioritize keeping the stack flat and balanced
+2. Avoid creating holes
+3. If you see a chance to clear lines, do it
+4. Only control the current piece visible at the top
+
+### Output Format:
+First, briefly describe what you see on the board (current piece type, next piece, and any existing pieces).
+Then provide your move recommendations as Python code within triple backticks:
+
+```python
+# Move left to position better
+pyautogui.press("left")
+# Rotate for better fit
+pyautogui.press("up")
+```
+
+Here's the current Tetris game state image:
+"""
+        
+        try:
+            # Call the OpenAI API
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    *messages
+                ],
+                max_tokens=1024,
+                temperature=0.2
+            )
+            
+            # Return the text from the response
+            if hasattr(response, 'choices') and len(response.choices) > 0:
+                return response.choices[0].message.content
+            return "No valid response from OpenAI"
+        
+        except Exception as e:
+            # Print the error for debugging
+            print(f"Error calling OpenAI API: {e}")
+            
+            # Fallback responses for when the API call fails
+            fallback_responses = [
+                "```python\n# Move left to position the piece better\npyautogui.press('left')\n# Rotate to fit better\npyautogui.press('up')\n```",
+                "```python\n# Move right to position the piece\npyautogui.press('right')\n# Drop the piece\npyautogui.press('space')\n```",
+                "```python\n# Rotate the piece for better fit\npyautogui.press('up')\n# Position it correctly\npyautogui.press('right')\n```"
+            ]
+            return random.choice(fallback_responses)
+
+
 class TetrisAIIterator:
-    def __init__(self, model=None, output_dir=None, window_title=None, save_responses=False):
-        self.client = OpenRouterProvider(model=model or MODEL)
+    def __init__(self, model=None, output_dir=None, window_title=None, save_responses=False, use_direct_openai=False):
+        # Choose the appropriate provider based on the use_direct_openai flag
+        if use_direct_openai and model and "o3" in model.lower():
+            self.client = OpenAIProvider(model=model)
+            self.provider_name = "OpenAI"
+        else:
+            self.client = OpenRouterProvider(model=model or MODEL)
+            self.provider_name = "OpenRouter"
+            
         self.iteration = 0
         self.stop_flag = False
         
@@ -275,6 +437,7 @@ class TetrisAIIterator:
         with open(self.log_path, "w", encoding="utf-8") as f:
             f.write(f"=== Tetris AI Iterator Session started at {datetime.now()} ===\n\n")
             f.write(f"Model: {self.model}\n")
+            f.write(f"Provider: {self.provider_name}\n")
             f.write(f"Window title: {self.window_title}\n")
             f.write(f"Output directory: {self.session_dir}\n\n")
         
@@ -316,9 +479,6 @@ pyautogui.press("up")
 
 Here's the current Tetris game state image:
 """
-
-    # All other methods are the same as TetrisClaudeIterator except for the call_claude_api method
-    # which needs to be replaced with call_gemini_api
 
     def log_message(self, message):
         """Log a message to the console and log file"""
@@ -774,22 +934,22 @@ Here's the current Tetris game state image:
         )
 
     def call_model_api(self, image):
-        """Call model API via OpenRouter with the Tetris screenshot"""
+        """Call model API with the Tetris screenshot"""
         try:
-            self.log_message(f"Calling model API via OpenRouter with model {self.model} (iteration {self.iteration})...")
+            self.log_message(f"Calling {self.provider_name} API with model {self.model} (iteration {self.iteration})...")
             start_time = time.time()
             
             # Encode image
             base64_image = self.encode_image(image)
             
-            # Call model API via OpenRouter
+            # Call model API
             response = self.client.get_response(self.instruction_prompt, base64_image)
             
             elapsed_time = time.time() - start_time
-            self.log_message(f"Model API response received in {elapsed_time:.2f}s")
+            self.log_message(f"{self.provider_name} API response received in {elapsed_time:.2f}s")
             
             # Log response to session log
-            self.log_message(f"=== Model API Response (Iteration {self.iteration}) ===")
+            self.log_message(f"=== {self.provider_name} API Response (Iteration {self.iteration}) ===")
             self.log_message(f"Model: {self.model}")
             self.log_message(f"API Latency: {elapsed_time:.2f}s")
             
@@ -798,7 +958,7 @@ Here's the current Tetris game state image:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 response_path = os.path.join(self.responses_dir, f"{timestamp}_response_{self.iteration}")
                 with open(response_path, "w", encoding="utf-8") as f:
-                    f.write(f"=== Model API Response (Iteration {self.iteration}) ===\n")
+                    f.write(f"=== {self.provider_name} API Response (Iteration {self.iteration}) ===\n")
                     f.write(f"Timestamp: {timestamp}\n")
                     f.write(f"Model: {self.model}\n")
                     f.write(f"API Latency: {elapsed_time:.2f}s\n\n")
@@ -809,7 +969,7 @@ Here's the current Tetris game state image:
             return response
             
         except Exception as e:
-            self.log_message(f"Error calling model API: {str(e)}")
+            self.log_message(f"Error calling {self.provider_name} API: {str(e)}")
             traceback.print_exc()
             
             # Return fallback response if API call fails
@@ -1126,7 +1286,9 @@ def main():
     parser.add_argument("--model", type=str, default=MODEL, help=f"Model to use via OpenRouter (default: {MODEL})")
     parser.add_argument("--use-pro-exp", action="store_true", help=f"Use Gemini Pro 2.0 Experimental model ({MODEL_GEMINI_PRO_EXP})")
     parser.add_argument("--use-qwen", action="store_true", help=f"Use Qwen2.5 VL 72B Instruct model ({MODEL_QWEN_VL})")
-    parser.add_argument("--output-dir", type=str, default=OUTPUT_DIR, help=f"Output directory (default: {OUTPUT_DIR})")
+    parser.add_argument("--use-o3", action="store_true", help=f"Use OpenAI o3-mini-high model via OpenRouter ({MODEL_O3_MINI})")
+    parser.add_argument("--use-o3-direct", action="store_true", help=f"Use OpenAI o3-mini model directly via OpenAI API ({MODEL_O3_MINI_DIRECT})")
+    parser.add_argument("--output-dir", type=str, help=f"Output directory (default: based on model)")
     parser.add_argument("--window-title", type=str, default=TETRIS_WINDOW_TITLE, 
                         help=f"Window title to look for (default: '{TETRIS_WINDOW_TITLE}')")
     
@@ -1150,32 +1312,46 @@ def main():
     
     # Set the model based on command-line arguments
     selected_model = args.model
-    selected_output_dir = args.output_dir
+    use_direct_openai = False
     
+    # Determine which model to use
     if args.use_pro_exp:
         selected_model = MODEL_GEMINI_PRO_EXP
         print(f"Using Gemini Pro 2.0 Experimental model: {selected_model}")
-        if not args.output_dir:
-            selected_output_dir = OUTPUT_DIR_GEMINI
     elif args.use_qwen:
         selected_model = MODEL_QWEN_VL
         print(f"Using Qwen2.5 VL 72B Instruct model: {selected_model}")
-        if not args.output_dir:
-            selected_output_dir = OUTPUT_DIR_QWEN
+    elif args.use_o3:
+        selected_model = MODEL_O3_MINI
+        print(f"Using OpenAI o3-mini-high model via OpenRouter: {selected_model}")
+    elif args.use_o3_direct:
+        selected_model = MODEL_O3_MINI_DIRECT
+        use_direct_openai = True
+        print(f"Using OpenAI o3-mini model directly via OpenAI API: {selected_model}")
+    
+    # Determine which output directory to use
+    if args.output_dir:
+        # User specified an output directory
+        selected_output_dir = args.output_dir
     else:
-        # For default or custom models, set output dir based on model name
-        if not args.output_dir:
-            if "qwen" in selected_model.lower():
-                selected_output_dir = OUTPUT_DIR_QWEN
-            else:
-                selected_output_dir = OUTPUT_DIR_GEMINI
+        # Choose based on model
+        if "qwen" in selected_model.lower():
+            selected_output_dir = OUTPUT_DIR_QWEN
+            print(f"Using Qwen output directory: {selected_output_dir}")
+        elif "o3" in selected_model.lower() or "openai" in selected_model.lower():
+            selected_output_dir = OUTPUT_DIR_O3
+            print(f"Using O3 output directory: {selected_output_dir}")
+        else:
+            selected_output_dir = OUTPUT_DIR_GEMINI
+            print(f"Using Gemini output directory: {selected_output_dir}")
     
     # Create and run the iterator with custom settings
     iterator = TetrisAIIterator(
         model=selected_model, 
         output_dir=selected_output_dir, 
         window_title=args.window_title,
-        save_responses=args.save_responses
+        save_responses=args.save_responses,
+        use_direct_openai=use_direct_openai
     )
     
     # Set manual window position if provided

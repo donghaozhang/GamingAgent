@@ -361,3 +361,75 @@ pyautogui.press("space")
 [2025-03-09 01:56:25.281] No executable code found in response.
 [2025-03-09 01:56:25.284] Waiting for space key to continue...
 [2025-03-09 01:56:25.286] Press SPACE to continue or Q to quit...
+[2025-03-09 01:56:29.877] 
+=== Iteration 17 ===
+[2025-03-09 01:56:29.890] Simulated Tetris board saved to: qwen_tetris_outputs\session_20250309_015044\screenshots\20250309_015629_879_simulated_iter_17
+[2025-03-09 01:56:29.893] Calling model API via OpenRouter with model qwen/qwen2.5-vl-72b-instruct:free (iteration 17)...
+[2025-03-09 01:56:42.777] Model API response received in 12.88s
+[2025-03-09 01:56:42.781] === Model API Response (Iteration 17) ===
+[2025-03-09 01:56:42.784] Model: qwen/qwen2.5-vl-72b-instruct:free
+[2025-03-09 01:56:42.786] API Latency: 12.88s
+[2025-03-09 01:56:42.794] Executing code...
+[2025-03-09 01:56:42.797] Code to execute:
+# Move the T piece to the left to align with the gap.
+pyautogui.press("left")
+# Rotate the T piece to fit into the gap.
+pyautogui.press("up")
+# Move it further left if needed.
+pyautogui.press("left")
+# Rotate again if necessary to fit perfectly.
+pyautogui.press("up")
+# Drop the piece immediately to clear the line.
+pyautogui.press("space")
+[2025-03-09 01:56:42.801] Extracted actions: ['left', 'up', 'left', 'up', 'space']
+[2025-03-09 01:56:42.831] Post-execution screenshot saved to: qwen_tetris_outputs\session_20250309_015044\screenshots\20250309_015642_post_execution_17
+[2025-03-09 01:56:42.834] Code execution completed.
+[2025-03-09 01:56:42.837] Waiting for space key to continue...
+[2025-03-09 01:56:42.840] Press SPACE to continue or Q to quit...
+[2025-03-09 01:57:13.613] 
+=== Iteration 18 ===
+[2025-03-09 01:57:13.627] Simulated Tetris board saved to: qwen_tetris_outputs\session_20250309_015044\screenshots\20250309_015713_617_simulated_iter_18
+[2025-03-09 01:57:13.630] Calling model API via OpenRouter with model qwen/qwen2.5-vl-72b-instruct:free (iteration 18)...
+[2025-03-09 01:57:22.995] Model API response received in 9.36s
+[2025-03-09 01:57:22.998] === Model API Response (Iteration 18) ===
+[2025-03-09 01:57:23.001] Model: qwen/qwen2.5-vl-72b-instruct:free
+[2025-03-09 01:57:23.005] API Latency: 9.36s
+[2025-03-09 01:57:23.014] Executing code...
+[2025-03-09 01:57:23.017] Code to execute:
+# Move the L piece to the right
+pyautogui.press("right")
+pyautogui.press("right")
+# Rotate the L piece to fit into the gap
+pyautogui.press("up")
+# Drop the piece immediately to clear the line
+pyautogui.press("space")
+[2025-03-09 01:57:23.021] Extracted actions: ['right', 'right', 'up', 'space']
+[2025-03-09 01:57:23.052] Post-execution screenshot saved to: qwen_tetris_outputs\session_20250309_015044\screenshots\20250309_015723_post_execution_18
+[2025-03-09 01:57:23.055] Code execution completed.
+[2025-03-09 01:57:23.058] Waiting for space key to continue...
+[2025-03-09 01:57:23.060] Press SPACE to continue or Q to quit...
+[2025-03-09 01:57:44.320] 
+=== Iteration 19 ===
+[2025-03-09 01:57:44.334] Simulated Tetris board saved to: qwen_tetris_outputs\session_20250309_015044\screenshots\20250309_015744_323_simulated_iter_19
+[2025-03-09 01:57:44.337] Calling model API via OpenRouter with model qwen/qwen2.5-vl-72b-instruct:free (iteration 19)...
+[2025-03-09 01:57:54.701] Model API response received in 10.36s
+[2025-03-09 01:57:54.704] === Model API Response (Iteration 19) ===
+[2025-03-09 01:57:54.707] Model: qwen/qwen2.5-vl-72b-instruct:free
+[2025-03-09 01:57:54.710] API Latency: 10.36s
+[2025-03-09 01:57:54.718] Executing code...
+[2025-03-09 01:57:54.720] Code to execute:
+# Move the L shape piece to the left to align with the gap.
+pyautogui.press("left")
+pyautogui.press("left")
+# Rotate the L shape piece to fit into the gap.
+pyautogui.press("up")
+# Move the piece down to fill the gap and clear a line.
+pyautogui.press("down")
+[2025-03-09 01:57:54.724] Extracted actions: ['left', 'left', 'up', 'down']
+[2025-03-09 01:57:54.727] Automatically adding 'space' action to drop piece to floor
+[2025-03-09 01:57:54.758] Post-execution screenshot saved to: qwen_tetris_outputs\session_20250309_015044\screenshots\20250309_015754_post_execution_19
+[2025-03-09 01:57:54.761] Code execution completed.
+[2025-03-09 01:57:54.765] Waiting for space key to continue...
+[2025-03-09 01:57:54.769] Press SPACE to continue or Q to quit...
+[2025-03-09 01:58:06.550] Quit requested. Stopping...
+[2025-03-09 01:58:06.554] === Tetris AI Iterator finished ===
