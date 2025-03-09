@@ -4,7 +4,7 @@ Tetris AI Iterator
 
 This script creates a simple loop to:
 1. Capture the Tetris game screen
-2. Call AI models via OpenRouter or direct APIs to suggest moves
+2. Call AI models via OpenRouter, OpenAI API, or DashScope API to suggest moves
 3. Output the response
 4. Wait for space key press to continue
 5. Repeat the process
@@ -15,16 +15,24 @@ Supported Models:
 - Qwen2.5 VL 72B Instruct (via OpenRouter)
 - OpenAI o3-mini-high (via OpenRouter)
 - OpenAI o3-mini (direct API)
+- OpenAI GPT-4 Vision (direct API)
+- Qwen VL Plus (via DashScope API)
+- Qwen VL Max (via DashScope API)
+- Qwen2.5 VL 72B Instruct (via 302.ai API)
 
 Usage:
     python tetris_ai_iterator.py [options]
     
 Options:
-    --use-pro-exp    Use Gemini Pro 2.0 Experimental model
-    --use-qwen       Use Qwen2.5 VL 72B Instruct model
-    --use-o3         Use OpenAI o3-mini-high model via OpenRouter
-    --use-o3-direct  Use OpenAI o3-mini model directly via OpenAI API
-    --model MODEL    Use a custom model via OpenRouter
+    --use-pro-exp       Use Gemini Pro 2.0 Experimental model
+    --use-qwen          Use Qwen2.5 VL 72B Instruct model via OpenRouter
+    --use-o3            Use OpenAI o3-mini-high model via OpenRouter
+    --use-o3-direct     Use OpenAI o3-mini model directly via OpenAI API
+    --use-gpt4-vision   Use OpenAI GPT-4 Vision model directly via OpenAI API
+    --use-dashscope     Use Qwen VL Plus model directly via DashScope API
+    --use-dashscope-max Use Qwen VL Max model directly via DashScope API
+    --use-302-ai        Use Qwen2.5 VL 72B Instruct model via 302.ai API
+    --model MODEL       Use a custom model via OpenRouter
 
 Requirements:
     - PIL (Pillow)
@@ -32,7 +40,13 @@ Requirements:
     - pynput
     - requests
     - python-dotenv
-    - openai (for OpenRouter and OpenAI APIs)
+    - openai (for OpenRouter, OpenAI, and DashScope APIs)
+    
+Environment Variables (.env file):
+    OPENROUTER_API_KEY - API key for OpenRouter
+    OPENAI_API_KEY - API key for OpenAI
+    DASHSCOPE_API_KEY - API key for DashScope
+    THREEZEROTWO_API_KEY - API key for 302.ai
 """
 
 import os
@@ -60,11 +74,26 @@ def load_env_file():
         load_dotenv()
         print(f"Loading environment variables from .env file")
         
-        # Check if the OPENROUTER_API_KEY is loaded
+        # Check if API keys are loaded
         if os.environ.get("OPENROUTER_API_KEY"):
             print("Successfully loaded OPENROUTER_API_KEY")
         else:
             print("Warning: OPENROUTER_API_KEY not found in environment variables")
+            
+        if os.environ.get("OPENAI_API_KEY"):
+            print("Successfully loaded OPENAI_API_KEY")
+        else:
+            print("Warning: OPENAI_API_KEY not found in environment variables")
+            
+        if os.environ.get("DASHSCOPE_API_KEY"):
+            print("Successfully loaded DASHSCOPE_API_KEY")
+        else:
+            print("Warning: DASHSCOPE_API_KEY not found in environment variables")
+            
+        if os.environ.get("THREEZEROTWO_API_KEY"):
+            print("Successfully loaded THREEZEROTWO_API_KEY")
+        else:
+            print("Warning: THREEZEROTWO_API_KEY not found in environment variables")
     except Exception as e:
         print(f"Error loading .env file: {e}")
 
@@ -86,12 +115,17 @@ MODEL_GEMINI_PRO_EXP = "google/gemini-2.0-pro-exp-02-05:free"
 MODEL_QWEN_VL = "qwen/qwen2.5-vl-72b-instruct:free"
 MODEL_O3_MINI = "openai/o3-mini-high"  # OpenRouter version
 MODEL_O3_MINI_DIRECT = "o3-mini"  # Direct OpenAI version
+MODEL_QWEN_DASHSCOPE_PLUS = "qwen-vl-plus"  # DashScope Qwen VL Plus model
+MODEL_QWEN_DASHSCOPE_MAX = "qwen-vl-max"  # DashScope Qwen VL Max model
+MODEL_QWEN_302_AI = "qwen2.5-vl-72b-instruct"  # 302.ai Qwen model
 MODEL = MODEL_GEMINI_FLASH  # Default model (via OpenRouter)
 
 # Output directories
 OUTPUT_DIR_GEMINI = "gemini_tetris_outputs"
 OUTPUT_DIR_QWEN = "qwen_tetris_outputs"
 OUTPUT_DIR_O3 = "o3_tetris_outputs"
+OUTPUT_DIR_DASHSCOPE = "dashscope_qwen_outputs"  # DashScope output directory
+OUTPUT_DIR_302_AI = "302ai_qwen_outputs"  # 302.ai output directory
 OUTPUT_DIR = OUTPUT_DIR_GEMINI  # Default output directory
 
 TETRIS_WINDOW_TITLE = "Simple Tetris"  # Window title to look for
@@ -417,14 +451,324 @@ Here's the current Tetris game state image:
             return random.choice(fallback_responses)
 
 
+class DashScopeProvider:
+    """
+    Provider class for direct integration with Alibaba Cloud's DashScope API service.
+    This class allows access to Qwen VL models directly through DashScope.
+    """
+    
+    def __init__(self, model="qwen-vl-plus"):
+        """
+        Initialize the DashScope provider with the specified model.
+        
+        Args:
+            model (str): The name of the model to use on DashScope API, default is qwen-vl-plus.
+                        Available models:
+                        - "qwen-vl-plus" - Qwen VL Plus model
+                        - "qwen-vl-max" - Qwen VL Max model (larger)
+        """
+        self.model = model
+        # Verify API key is available
+        self.api_key = os.getenv("DASHSCOPE_API_KEY")
+        if not self.api_key:
+            raise ValueError("DASHSCOPE_API_KEY environment variable not set. Please check your .env file.")
+        
+        # Initialize the OpenAI client with DashScope base URL
+        self.client = OpenAI(
+            api_key=self.api_key,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
+        
+        print(f"Initialized DashScope provider with model: {model}")
+        print("DashScope provider ready for Qwen VL model access")
+    
+    def get_response(self, prompt, base64_image=None):
+        """
+        Get a response from the Qwen model through DashScope API.
+        
+        Args:
+            prompt (str): The text prompt to send to the model.
+            base64_image (str, optional): Base64-encoded image data.
+            
+        Returns:
+            str: The model's response text.
+        """
+        # System prompt for Tetris
+        system_prompt = """Analyze the current Tetris board state and generate PyAutoGUI code to control Tetris 
+for the current piece. Your code will be executed to control the game.
+
+The speed pieces drop is at around ~0.75s/grid block.
+
+### General Tetris Controls (keybinds):
+- left: move piece left
+- right: move piece right
+- up: rotate piece clockwise
+- down: accelerated drop (if necessary)
+- space: drop piece immediately
+
+### Strategies and Caveats:
+0. Clear the horizontal rows as soon as possible.
+1. Prioritize keeping the stack flat and balanced
+2. Avoid creating holes
+3. If you see a chance to clear lines, do it
+4. Only control the current piece visible at the top
+
+### Output Format:
+First, briefly describe what you see on the board (current piece type, next piece, and any existing pieces).
+Then provide your move recommendations as Python code within triple backticks:
+
+```python
+# Move left to position better
+pyautogui.press("left")
+# Rotate for better fit
+pyautogui.press("up")
+```
+
+Here's the current Tetris game state image:
+"""
+        
+        try:
+            # Create message content based on whether we have an image
+            messages = [
+                {"role": "system", "content": system_prompt},
+            ]
+            
+            # User message with content
+            user_content = []
+            
+            # Add text prompt
+            user_content.append({
+                "type": "text",
+                "text": prompt
+            })
+            
+            # Add image if provided
+            if base64_image:
+                # Ensure image has proper data URL format
+                if not base64_image.startswith("data:"):
+                    base64_image = f"data:image/png;base64,{base64_image}"
+                
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": base64_image
+                    }
+                })
+            
+            # Add user message with content
+            messages.append({
+                "role": "user",
+                "content": user_content
+            })
+            
+            # Call the DashScope API
+            print(f"Sending request to DashScope API with model: {self.model}")
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=1024,  # DashScope supports max_tokens
+                temperature=0.2
+            )
+            
+            # Return the text from the response
+            if hasattr(response, 'choices') and len(response.choices) > 0:
+                return response.choices[0].message.content
+            return "No valid response from DashScope"
+        
+        except Exception as e:
+            # Print the error for debugging
+            print(f"Error calling DashScope API: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Fallback responses for when the API call fails
+            fallback_responses = [
+                "```python\n# Move left to position the piece better\npyautogui.press('left')\n# Rotate to fit better\npyautogui.press('up')\n```",
+                "```python\n# Move right to position the piece\npyautogui.press('right')\n# Drop the piece\npyautogui.press('space')\n```",
+                "```python\n# Rotate the piece for better fit\npyautogui.press('up')\n# Position it correctly\npyautogui.press('right')\n```"
+            ]
+            return random.choice(fallback_responses)
+
+
+class ThreeZeroTwoProvider:
+    """
+    Provider class for direct integration with 302.ai API service.
+    This class allows access to Qwen models directly through 302.ai.
+    """
+    
+    def __init__(self, model="qwen2.5-vl-72b-instruct"):
+        """
+        Initialize the 302.ai provider with the specified model.
+        
+        Args:
+            model (str): The name of the model to use on 302.ai API, default is qwen2.5-vl-72b-instruct.
+        """
+        self.model = model
+        # Verify API key is available
+        self.api_key = os.getenv("THREEZEROTWO_API_KEY")
+        if not self.api_key:
+            raise ValueError("THREEZEROTWO_API_KEY environment variable not set. Please check your .env file.")
+        
+        # We'll use http.client instead of OpenAI client library for 302.ai
+        import http.client
+        self.http_client = http.client
+        
+        print(f"Initialized 302.ai provider with model: {model}")
+        print("302.ai provider ready for Qwen VL model access")
+    
+    def get_response(self, prompt, base64_image=None):
+        """
+        Get a response from the Qwen model through 302.ai API.
+        
+        Args:
+            prompt (str): The text prompt to send to the model.
+            base64_image (str, optional): Base64-encoded image data.
+            
+        Returns:
+            str: The model's response text.
+        """
+        # System prompt for Tetris
+        system_prompt = """Analyze the current Tetris board state and generate PyAutoGUI code to control Tetris 
+for the current piece. Your code will be executed to control the game.
+
+The speed pieces drop is at around ~0.75s/grid block.
+
+### General Tetris Controls (keybinds):
+- left: move piece left
+- right: move piece right
+- up: rotate piece clockwise
+- down: accelerated drop (if necessary)
+- space: drop piece immediately
+
+### Strategies and Caveats:
+0. Clear the horizontal rows as soon as possible.
+1. Prioritize keeping the stack flat and balanced
+2. Avoid creating holes
+3. If you see a chance to clear lines, do it
+4. Only control the current piece visible at the top
+
+### Output Format:
+First, briefly describe what you see on the board (current piece type, next piece, and any existing pieces).
+Then provide your move recommendations as Python code within triple backticks:
+
+```python
+# Move left to position better
+pyautogui.press("left")
+# Rotate for better fit
+pyautogui.press("up")
+```
+
+Here's the current Tetris game state image:
+"""
+        
+        try:
+            # Prepare messages for API call
+            messages = [
+                {"role": "system", "content": system_prompt},
+            ]
+            
+            # User message with content
+            user_content = []
+            
+            # Add text prompt
+            user_content.append({
+                "type": "text",
+                "text": prompt
+            })
+            
+            # Add image if provided
+            if base64_image:
+                # For HTTP request, we need to ensure image doesn't have data URL prefix
+                if base64_image.startswith("data:image/png;base64,"):
+                    base64_image = base64_image[len("data:image/png;base64,"):]
+                
+                # Add image in the format expected by 302.ai
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{base64_image}"
+                    }
+                })
+            
+            # Create the full payload
+            import json
+            payload = json.dumps({
+                "model": self.model,
+                "stream": False,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": user_content
+                    }
+                ]
+            })
+            
+            # Set up headers
+            headers = {
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {self.api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            # Call the 302.ai API
+            print(f"Sending request to 302.ai API with model: {self.model}")
+            conn = self.http_client.HTTPSConnection("api.302.ai")
+            conn.request("POST", "/v1/chat/completions", payload, headers)
+            response = conn.getresponse()
+            data = response.read()
+            
+            # Parse the response
+            response_data = json.loads(data.decode("utf-8"))
+            
+            # Extract the content from the response
+            if "choices" in response_data and len(response_data["choices"]) > 0:
+                content = response_data["choices"][0]["message"]["content"]
+                return content
+            else:
+                print(f"Unexpected response format from 302.ai: {response_data}")
+                return "No valid response from 302.ai"
+            
+        except Exception as e:
+            # Print the error for debugging
+            print(f"Error calling 302.ai API: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Fallback responses for when the API call fails
+            fallback_responses = [
+                "```python\n# Move left to position the piece better\npyautogui.press('left')\n# Rotate to fit better\npyautogui.press('up')\n```",
+                "```python\n# Move right to position the piece\npyautogui.press('right')\n# Drop the piece\npyautogui.press('space')\n```",
+                "```python\n# Rotate the piece for better fit\npyautogui.press('up')\n# Position it correctly\npyautogui.press('right')\n```"
+            ]
+            return random.choice(fallback_responses)
+
+
 class TetrisAIIterator:
-    def __init__(self, model=None, output_dir=None, window_title=None, save_responses=False, use_direct_openai=False):
-        # Choose the appropriate provider based on the use_direct_openai flag
-        if use_direct_openai and model and "o3" in model.lower():
-            self.client = OpenAIProvider(model=model)
+    def __init__(self, model=None, output_dir=None, window_title=None, save_responses=False, use_direct_openai=False, use_dashscope=False, use_302_ai=False):
+        """
+        Initialize the Tetris AI Iterator.
+        
+        Args:
+            model (str, optional): Model to use. Defaults to the global MODEL constant.
+            output_dir (str, optional): Output directory. Defaults to the global OUTPUT_DIR constant.
+            window_title (str, optional): Window title to look for. Defaults to the global TETRIS_WINDOW_TITLE constant.
+            save_responses (bool, optional): Whether to save API responses. Defaults to False.
+            use_direct_openai (bool, optional): Whether to use OpenAI API directly. Defaults to False.
+            use_dashscope (bool, optional): Whether to use DashScope API directly. Defaults to False.
+            use_302_ai (bool, optional): Whether to use 302.ai API directly. Defaults to False.
+        """
+        # Create the appropriate provider
+        if use_direct_openai:
+            self.provider = OpenAIProvider(model=model)
             self.provider_name = "OpenAI"
+        elif use_dashscope:
+            self.provider = DashScopeProvider(model=model)
+            self.provider_name = "DashScope"
+        elif use_302_ai:
+            self.provider = ThreeZeroTwoProvider(model=model)
+            self.provider_name = "302.ai"
         else:
-            self.client = OpenRouterProvider(model=model or MODEL)
+            self.provider = OpenRouterProvider(model=model)
             self.provider_name = "OpenRouter"
             
         self.iteration = 0
@@ -964,7 +1308,7 @@ Here's the current Tetris game state image:
             base64_image = self.encode_image(image)
             
             # Call model API
-            response = self.client.get_response(self.instruction_prompt, base64_image)
+            response = self.provider.get_response(self.instruction_prompt, base64_image)
             
             elapsed_time = time.time() - start_time
             self.log_message(f"{self.provider_name} API response received in {elapsed_time:.2f}s")
@@ -1310,6 +1654,9 @@ def main():
     parser.add_argument("--use-o3", action="store_true", help=f"Use OpenAI o3-mini-high model via OpenRouter ({MODEL_O3_MINI})")
     parser.add_argument("--use-o3-direct", action="store_true", help=f"Use OpenAI o3-mini model directly via OpenAI API ({MODEL_O3_MINI_DIRECT})")
     parser.add_argument("--use-gpt4-vision", action="store_true", help=f"Use OpenAI GPT-4 Vision model directly via OpenAI API (requires OPENAI_API_KEY)")
+    parser.add_argument("--use-dashscope", action="store_true", help=f"Use Qwen VL Plus model directly via DashScope API ({MODEL_QWEN_DASHSCOPE_PLUS}, requires DASHSCOPE_API_KEY)")
+    parser.add_argument("--use-dashscope-max", action="store_true", help=f"Use Qwen VL Max model directly via DashScope API ({MODEL_QWEN_DASHSCOPE_MAX}, requires DASHSCOPE_API_KEY)")
+    parser.add_argument("--use-302-ai", action="store_true", help=f"Use Qwen2.5 VL 72B Instruct model via 302.ai API ({MODEL_QWEN_302_AI})")
     parser.add_argument("--output-dir", type=str, help=f"Output directory (default: based on model)")
     parser.add_argument("--window-title", type=str, default=TETRIS_WINDOW_TITLE, 
                         help=f"Window title to look for (default: '{TETRIS_WINDOW_TITLE}')")
@@ -1335,7 +1682,9 @@ def main():
     # Process model selection
     model = args.model
     use_direct_openai = False
-    
+    use_dashscope = False
+    use_302_ai = False
+
     if args.use_pro_exp:
         model = MODEL_GEMINI_PRO_EXP
         print(f"Using Gemini Pro 2.0 Experimental model: {model}")
@@ -1353,18 +1702,36 @@ def main():
         model = "gpt-4-vision-preview"
         use_direct_openai = True
         print(f"Using OpenAI GPT-4 Vision model directly via OpenAI API: {model}")
+    elif args.use_dashscope:
+        model = MODEL_QWEN_DASHSCOPE_PLUS
+        use_dashscope = True
+        print(f"Using Qwen VL Plus model directly via DashScope API: {model}")
+    elif args.use_dashscope_max:
+        model = MODEL_QWEN_DASHSCOPE_MAX
+        use_dashscope = True
+        print(f"Using Qwen VL Max model directly via DashScope API: {model}")
+    elif args.use_302_ai:
+        model = MODEL_QWEN_302_AI
+        use_302_ai = True
+        print(f"Using Qwen2.5 VL 72B Instruct model via 302.ai API: {model}")
     else:
         print(f"Using default model: {model}")
     
     # Determine which output directory to use
     if args.output_dir:
-        # User specified an output directory
         selected_output_dir = args.output_dir
+        print(f"Using custom output directory: {selected_output_dir}")
     else:
         # Choose based on model
-        if "qwen" in model.lower():
+        if "qwen" in model.lower() and not use_dashscope and not use_302_ai:
             selected_output_dir = OUTPUT_DIR_QWEN
             print(f"Using Qwen output directory: {selected_output_dir}")
+        elif use_dashscope:
+            selected_output_dir = OUTPUT_DIR_DASHSCOPE
+            print(f"Using DashScope output directory: {selected_output_dir}")
+        elif use_302_ai:
+            selected_output_dir = OUTPUT_DIR_302_AI
+            print(f"Using 302.ai output directory: {selected_output_dir}")
         elif "o3" in model.lower() or "openai" in model.lower():
             selected_output_dir = OUTPUT_DIR_O3
             print(f"Using O3 output directory: {selected_output_dir}")
@@ -1378,7 +1745,9 @@ def main():
         output_dir=selected_output_dir, 
         window_title=args.window_title,
         save_responses=args.save_responses,
-        use_direct_openai=use_direct_openai
+        use_direct_openai=use_direct_openai,
+        use_dashscope=use_dashscope,
+        use_302_ai=use_302_ai
     )
     
     # Set manual window position if provided
