@@ -59,7 +59,14 @@ desktop.ini
 .env
 *.png
 game_logs
-claude_tetris_outputs
-gemini_tetris_outputs
-o3_tetris_outputs
-qwen_tetris_outputs
+
+# Tetris output directories
+claude_tetris_outputs/
+gemini_tetris_outputs/
+o3_tetris_outputs/
+qwen_tetris_outputs/
+
+# Session logs and screenshots
+**/session_*/
+**/screenshots/
+**/session_log
