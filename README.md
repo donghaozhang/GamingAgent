@@ -63,6 +63,12 @@ This file specifically uses Claude models from Anthropic to play Tetris:
   - Provides detailed logging of Claude's responses
   - Can capture real screenshots or use simulated boards
 
+- **Visual Example**:
+  
+  ![Claude playing Tetris](assets/tetris/claude.gif)
+  
+  *Claude AI playing Tetris through vision-based analysis*
+
 - **Usage**:
   ```bash
   # Use default Claude model
