@@ -55,14 +55,18 @@ This file specifically uses Claude models from Anthropic to play Tetris:
 This is the main, unified iterator that supports multiple AI models through different providers:
 
 - **Supported Models**:
+  - OpenAI o3-mini (direct API) Tested
+  - Qwen2.5 VL 72B Instruct (via 302.ai API) Tested
   - Gemini 2.0 Flash (default, via OpenRouter)
   - Gemini Pro 2.0 Experimental (via OpenRouter)
   - Qwen2.5 VL 72B Instruct (via OpenRouter)
   - OpenAI o3-mini-high (via OpenRouter)
-  - OpenAI o3-mini (direct API)
-
+  - OpenAI GPT-4 Vision (direct API)
+  - Qwen VL Plus (via DashScope API)
+  - Qwen VL Max (via DashScope API)
+  
 - **Key Features**:
-  - Supports both OpenRouter and direct OpenAI APIs
+  - Supports multiple API providers: OpenRouter, OpenAI, DashScope, and 302.ai
   - Automatically selects appropriate output directories based on model
   - Provides fallback mechanisms for API failures
   - Includes simulation mode for testing without a real game
@@ -73,17 +77,29 @@ This is the main, unified iterator that supports multiple AI models through diff
   # Use Gemini Flash (default)
   python tetris_ai_iterator.py
   
-  # Use Gemini Pro Experimental
+  # Use Gemini Pro Experimental (Tested)
   python tetris_ai_iterator.py --use-pro-exp
   
-  # Use Qwen model
+  # Use Qwen2.5 VL 72B Instruct via 302.ai (Tested)
+  python tetris_ai_iterator.py --use-302-ai
+
+  # Use OpenAI o3-mini directly (Tested)
+  python tetris_ai_iterator.py --use-o3-direct
+
+  # Use Qwen model via OpenRouter
   python tetris_ai_iterator.py --use-qwen
   
   # Use OpenAI o3-mini via OpenRouter
   python tetris_ai_iterator.py --use-o3
   
-  # Use OpenAI o3-mini directly
-  python tetris_ai_iterator.py --use-o3-direct
+  # Use OpenAI GPT-4 Vision directly
+  python tetris_ai_iterator.py --use-gpt4-vision
+  
+  # Use Qwen VL Plus via DashScope
+  python tetris_ai_iterator.py --use-dashscope
+  
+  # Use Qwen VL Max via DashScope
+  python tetris_ai_iterator.py --use-dashscope-max
   
   # Use simulation mode with complex board
   python tetris_ai_iterator.py --complex
@@ -134,59 +150,6 @@ The AI iterators follow this general process:
 
 The system can be used with a real Tetris game or in simulation mode for testing and development.
 
-## Quick Start Methods
-
-We provide several simple ways to start:
-
-### Windows Users
-
-Simply double-click to run:
-```
-start_tetris.bat
-```
-
-This batch file will automatically:
-1. Detect and try to activate the game_cua environment (if it exists)
-2. Launch the Tetris AI agent
-
-### Linux/Mac Users
-
-Run in terminal:
-```bash
-# First add execution permission
-chmod +x start_tetris.sh
-# Then run
-./start_tetris.sh
-```
-
-### Run Directly with Python
-
-If you have already activated the correct environment, you can run directly:
-```bash
-# Run in the GamingAgent directory
-python run_tetris.py
-```
-
-## Advanced Launch Options
-
-You can add these command-line arguments to customize behavior:
-
-```bash
-# Display detailed AI output
-python run_tetris.py --verbose_output
-
-# Save AI responses to files
-python run_tetris.py --save_responses
-
-# Manually specify game window position (if auto-detection has issues)
-python run_tetris.py --manual_window --window_left 100 --window_top 100 --window_width 800 --window_height 700
-
-# Use different API providers
-python run_tetris.py --api_provider openai --model_name gpt-4o
-
-# View all available options
-python run_tetris.py --help
-```
 
 ## Game Controls
 
@@ -213,4 +176,6 @@ During gameplay:
    - Ensure you have the correct API keys in your .env file:
      - ANTHROPIC_API_KEY for Claude models
      - OPENROUTER_API_KEY for OpenRouter models
-     - OPENAI_API_KEY for direct OpenAI models 
+     - OPENAI_API_KEY for direct OpenAI models
+     - DASHSCOPE_API_KEY for DashScope models
+     - THREEZEROTWO_API_KEY for 302.ai models 
