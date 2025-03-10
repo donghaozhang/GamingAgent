@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - Social App</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            padding: 0;
+            margin: 0;
+        }
+        .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: rgba(255, 255, 255, 0.95);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .post-card {
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            margin-bottom: 16px;
+            background-color: white;
+        }
+        .post-header, .post-footer {
+            padding: 12px 16px;
+        }
+        .post-content img {
+            width: 100%;
+            height: auto;
+            object-fit: cover;
+        }
+        .post-content video {
+            width: 100%;
+            height: auto;
+            background-color: #000;
+        }
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .video-duration {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .category-pills {
+            display: flex;
+            overflow-x: auto;
+            padding: 8px 0;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .category-pills::-webkit-scrollbar {
+            display: none;
+        }
+        .category-pill {
+            flex-shrink: 0;
+            padding: 6px 16px;
+            background-color: #f1f1f1;
+            border-radius: 18px;
+            margin-right: 8px;
+            font-size: 14px;
+            color: #555;
+            white-space: nowrap;
+        }
+        .category-pill.active {
+            background-color: #ff2d55;
+            color: white;
+        }
+        .engagement-btn {
+            display: flex;
+            align-items: center;
+            color: #666;
+            font-size: 14px;
+        }
+        .engagement-btn i {
+            margin-right: 4px;
+        }
+        .tag {
+            color: #007aff;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-header px-4 py-3">
+        <div class="flex justify-between items-center mb-2">
+            <h1 class="text-xl font-bold">SocialFeed</h1>
+            <div class="flex items-center">
+                <button class="mr-4" title="Search"><i class="fas fa-search text-xl"></i></button>
+                <button title="Messages"><i class="fas fa-paper-plane text-xl"></i></button>
+            </div>
+        </div>
+        
+        <div class="category-pills">
+            <div class="category-pill active">For You</div>
+            <div class="category-pill">Following</div>
+            <div class="category-pill">Fashion</div>
+            <div class="category-pill">Travel</div>
+            <div class="category-pill">Food</div>
+            <div class="category-pill">Technology</div>
+            <div class="category-pill">Gaming</div>
+            <div class="category-pill">Music</div>
+        </div>
+    </div>
+
+    <div class="feed-container p-3">
+        <!-- Video Post -->
+        <div class="post-card">
+            <div class="post-header flex items-center">
+                <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80" class="avatar mr-3" alt="User avatar">
+                <div>
+                    <div class="font-medium">Alex Chen</div>
+                    <div class="text-xs text-gray-500">@alexc • 2h ago</div>
+                </div>
+                <button class="ml-auto text-gray-500" title="More options"><i class="fas fa-ellipsis-h"></i></button>
+            </div>
+            <div class="post-content relative">
+                <video poster="https://images.unsplash.com/photo-1618641986557-1ecd230959aa?ixlib=rb-1.2.1&auto=format&fit=crop&w=634&q=80" controls>
+                    <source src="#" type="video/mp4">
+                </video>
+                <div class="video-duration">03:24</div>
+            </div>
+            <div class="post-footer">
+                <div class="text-sm mb-2">Trying out this new gaming setup! What do you think about the RGB lighting? <span class="tag">#gaming</span> <span class="tag">#setup</span></div>
+                <div class="flex justify-between mt-3">
+                    <div class="engagement-btn"><i class="far fa-heart"></i> 2.4k</div>
+                    <div class="engagement-btn"><i class="far fa-comment"></i> 342</div>
+                    <div class="engagement-btn"><i class="far fa-bookmark"></i> 120</div>
+                    <div class="engagement-btn"><i class="fas fa-share"></i> Share</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Post (Xiaohongshu style) -->
+        <div class="post-card">
+            <div class="post-header flex items-center">
+                <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80" class="avatar mr-3" alt="User avatar">
+                <div>
+                    <div class="font-medium">Sophia Lee</div>
+                    <div class="text-xs text-gray-500">@sophialee • 5h ago</div>
+                </div>
+                <button class="ml-auto text-gray-500" title="More options"><i class="fas fa-ellipsis-h"></i></button>
+            </div>
+            <div class="post-content">
+                <div class="grid grid-cols-2 gap-1">
+                    <img src="https://images.unsplash.com/photo-1523450001312-faa4e2e37f0f?ixlib=rb-1.2.1&auto=format&fit=crop&w=634&q=80" alt="Fashion post 1">
+                    <img src="https://images.unsplash.com/photo-1545291730-faff8ca1d4b0?ixlib=rb-1.2.1&auto=format&fit=crop&w=634&q=80" alt="Fashion post 2">
+                </div>
+            </div>
+            <div class="post-footer">
+                <div class="font-medium mb-1">Spring Fashion Essentials 2024</div>
+                <div class="text-sm mb-2">Just got these pieces for my spring wardrobe refresh! Absolutely love the pastel colors this season. <span class="tag">#fashion</span> <span class="tag">#spring2024</span></div>
+                <div class="flex justify-between mt-3">
+                    <div class="engagement-btn"><i class="far fa-heart"></i> 5.7k</div>
+                    <div class="engagement-btn"><i class="far fa-comment"></i> 423</div>
+                    <div class="engagement-btn"><i class="far fa-bookmark"></i> 1.2k</div>
+                    <div class="engagement-btn"><i class="fas fa-share"></i> Share</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Food Review Post -->
+        <div class="post-card">
+            <div class="post-header flex items-center">
+                <img src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80" class="avatar mr-3" alt="User avatar">
+                <div>
+                    <div class="font-medium">Marcus Wong</div>
+                    <div class="text-xs text-gray-500">@foodie_marcus • 1d ago</div>
+                </div>
+                <button class="ml-auto text-gray-500" title="More options"><i class="fas fa-ellipsis-h"></i></button>
+            </div>
+            <div class="post-content">
+                <div class="swiper-slide">
+                    <img src="https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?ixlib=rb-1.2.1&auto=format&fit=crop&w=634&q=80" alt="Food post">
+                </div>
+            </div>
+            <div class="post-footer">
+                <div class="font-medium mb-1">Hidden Gem in Downtown! ⭐⭐⭐⭐⭐</div>
+                <div class="text-sm mb-2">Finally tried this authentic Italian place everyone's been talking about. The margherita pizza is to die for! Worth every penny. <span class="tag">#foodie</span> <span class="tag">#italianfood</span></div>
+                <div class="flex justify-between mt-3">
+                    <div class="engagement-btn"><i class="far fa-heart"></i> 3.1k</div>
+                    <div class="engagement-btn"><i class="far fa-comment"></i> 256</div>
+                    <div class="engagement-btn"><i class="far fa-bookmark"></i> 830</div>
+                    <div class="engagement-btn"><i class="fas fa-share"></i> Share</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

@@ -1,0 +1,26 @@
+<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+  <!-- Stem -->
+  <rect x="45" y="60" width="10" height="30" fill="#0C8A15"/>
+  
+  <!-- Flower Center -->
+  <circle cx="50" cy="40" r="15" fill="#825B09"/>
+  
+  <!-- Petals -->
+  <path d="M 50,25 L 55,5 L 45,5 Z" fill="#FFD700"/>
+  <path d="M 65,30 L 85,15 L 75,5 Z" fill="#FFD700"/>
+  <path d="M 70,45 L 95,45 L 85,35 Z" fill="#FFD700"/>
+  <path d="M 65,60 L 85,75 L 75,65 Z" fill="#FFD700"/>
+  <path d="M 50,65 L 55,85 L 45,85 Z" fill="#FFD700"/>
+  <path d="M 35,60 L 15,75 L 25,65 Z" fill="#FFD700"/>
+  <path d="M 30,45 L 5,45 L 15,35 Z" fill="#FFD700"/>
+  <path d="M 35,30 L 15,15 L 25,5 Z" fill="#FFD700"/>
+  
+  <!-- Face -->
+  <circle cx="45" cy="35" r="3" fill="black"/>
+  <circle cx="55" cy="35" r="3" fill="black"/>
+  <path d="M 45,45 Q 50,50 55,45" fill="none" stroke="black" stroke-width="2"/>
+  
+  <!-- Leaves -->
+  <path d="M 45,75 C 25,70 15,85 25,90" fill="#0C8A15"/>
+  <path d="M 55,75 C 75,70 85,85 75,90" fill="#0C8A15"/>
+</svg> 

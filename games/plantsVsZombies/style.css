@@ -1,0 +1,252 @@
+/* General Styles */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Arial', sans-serif;
+}
+
+body {
+    background-color: #87CEEB;
+    background-image: linear-gradient(to bottom, #87CEEB, #4682B4);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.game-container {
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    width: 900px;
+    max-width: 100%;
+}
+
+/* Header Styles */
+.header {
+    background-color: #4a9734;
+    color: white;
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 3px solid #3c7c29;
+}
+
+.header h1 {
+    font-size: 24px;
+}
+
+.score-container, .sun-container {
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Plant Selection Styles */
+.plant-selection {
+    display: flex;
+    background-color: #8b5a2b;
+    padding: 10px;
+    gap: 10px;
+    border-bottom: 3px solid #6b4423;
+}
+
+.plant-card {
+    background-color: #d2b48c;
+    border-radius: 5px;
+    padding: 5px;
+    width: 70px;
+    height: 90px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.2s;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.plant-card:hover {
+    transform: scale(1.05);
+    background-color: #e6c9a8;
+}
+
+.plant-card img {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+    margin-bottom: 5px;
+}
+
+.plant-card.selected {
+    box-shadow: 0 0 0 3px yellow;
+}
+
+.plant-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.plant-cost {
+    position: absolute;
+    bottom: 2px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 2px 5px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+/* Game Board Styles */
+.game-board {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    grid-template-rows: repeat(5, 80px);
+    background-color: #2E8B57;
+    background-size: cover;
+    background-position: center;
+    gap: 1px;
+    border-top: 3px solid #1e7d44;
+    border-bottom: 3px solid #1e7d44;
+}
+
+.cell {
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    position: relative;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.cell:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+.plant {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    z-index: 2;
+}
+
+.zombie {
+    width: 60px;
+    height: 80px;
+    position: absolute;
+    right: 0;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    z-index: 3;
+    transition: right 0.5s linear;
+}
+
+.pea {
+    width: 20px;
+    height: 20px;
+    background-color: #00ff00;
+    border-radius: 50%;
+    position: absolute;
+    top: 30px;
+    left: 40px;
+    z-index: 1;
+    transition: left 0.2s linear;
+    box-shadow: 0 0 5px rgba(0, 255, 0, 0.7);
+}
+
+.sun {
+    width: 40px;
+    height: 40px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    position: absolute;
+    z-index: 4;
+    cursor: pointer;
+    animation: sunfall 10s linear forwards;
+    filter: drop-shadow(0 0 5px rgba(255, 255, 0, 0.7));
+}
+
+@keyframes sunfall {
+    0% {
+        top: -40px;
+    }
+    100% {
+        top: 500px;
+    }
+}
+
+/* Controls Styles */
+.controls {
+    padding: 15px;
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    background-color: #f5f5f5;
+}
+
+button {
+    background-color: #4a9734;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+button:hover {
+    background-color: #3c7c29;
+    transform: translateY(-2px);
+}
+
+/* Game Over Styles */
+#game-over {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+}
+
+.game-over-content {
+    background-color: white;
+    padding: 30px;
+    border-radius: 10px;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    min-width: 300px;
+}
+
+.game-over-content h2 {
+    color: #ff0000;
+    margin-bottom: 20px;
+}
+
+.game-over-content p {
+    margin-bottom: 20px;
+    font-size: 18px;
+}
+
+.hidden {
+    display: none !important;
+} 

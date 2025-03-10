@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - Social App</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            padding: 0;
+            margin: 0;
+        }
+        .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: rgba(255, 255, 255, 0.95);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .profile-header {
+            background-color: white;
+            padding: 20px 16px;
+        }
+        .avatar-large {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .stat-value {
+            font-weight: 600;
+            font-size: 18px;
+        }
+        .stat-label {
+            color: #8e8e93;
+            font-size: 12px;
+        }
+        .profile-bio {
+            margin: 16px 0;
+        }
+        .action-btn {
+            border-radius: 20px;
+            padding: 6px 16px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .grid-item {
+            position: relative;
+            overflow: hidden;
+            border-radius: 4px;
+            aspect-ratio: 1 / 1;
+        }
+        .grid-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .video-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .tab-bar {
+            display: flex;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 12px 0;
+            font-size: 14px;
+            color: #8e8e93;
+        }
+        .tab.active {
+            color: #007aff;
+            border-bottom: 2px solid #007aff;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-header px-4 py-3 flex justify-between items-center">
+        <button title="Back" class="text-gray-500"><i class="fas fa-arrow-left text-xl"></i></button>
+        <h1 class="text-lg font-semibold">Alex Parker</h1>
+        <div class="flex">
+            <button class="mr-4" title="Share profile"><i class="fas fa-share-alt text-xl"></i></button>
+            <button title="Settings"><i class="fas fa-ellipsis-h text-xl"></i></button>
+        </div>
+    </div>
+
+    <div class="profile-container">
+        <div class="profile-header">
+            <div class="flex items-center">
+                <img src="https://images.unsplash.com/photo-1504257432389-52343af06ae3?ixlib=rb-1.2.1&auto=format&fit=crop&w=200&q=80" class="avatar-large mr-4" alt="Profile avatar">
+                <div class="flex-1">
+                    <div class="flex justify-between mb-3">
+                        <div class="stat-item">
+                            <div class="stat-value">152</div>
+                            <div class="stat-label">Posts</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">8.2k</div>
+                            <div class="stat-label">Followers</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">364</div>
+                            <div class="stat-label">Following</div>
+                        </div>
+                    </div>
+                    <div class="flex">
+                        <button class="action-btn bg-blue-500 text-white mr-2 flex-1">Follow</button>
+                        <button class="action-btn bg-gray-200 text-gray-800 flex-1">Message</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="profile-bio mt-4">
+                <div class="font-semibold">Alex Parker</div>
+                <div class="text-sm text-gray-700">Photographer & Travel Enthusiast</div>
+                <div class="text-sm mt-1">Capturing life's moments one frame at a time ✨ Based in NYC</div>
+                <div class="text-sm text-blue-500 mt-1">www.alexparker.portfolio.com</div>
+            </div>
+        </div>
+        
+        <div class="tab-bar">
+            <div class="tab active"><i class="fas fa-th"></i></div>
+            <div class="tab"><i class="fas fa-film"></i></div>
+            <div class="tab"><i class="fas fa-bookmark"></i></div>
+            <div class="tab"><i class="fas fa-tag"></i></div>
+        </div>
+        
+        <div class="grid grid-cols-3 gap-1 p-1">
+            <!-- Grid Item 1 -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1519046904884-53103b34b206?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Beach sunset">
+            </div>
+            
+            <!-- Grid Item 2 (Video) -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1506929562872-bb421503ef21?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Beach video">
+                <div class="video-badge">
+                    <i class="fas fa-play text-xs"></i>
+                </div>
+            </div>
+            
+            <!-- Grid Item 3 -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1527631746610-bca00a040d60?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Mountain view">
+            </div>
+            
+            <!-- Grid Item 4 -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1504214208698-ea1916a2195a?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="City skyline">
+            </div>
+            
+            <!-- Grid Item 5 (Video) -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1516483638261-f4dbaf036963?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Italy tour video">
+                <div class="video-badge">
+                    <i class="fas fa-play text-xs"></i>
+                </div>
+            </div>
+            
+            <!-- Grid Item 6 -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1514128034805-e8248c70f37e?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Night lights">
+            </div>
+            
+            <!-- Grid Item 7 -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Drone shot">
+            </div>
+            
+            <!-- Grid Item 8 -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1499363536502-87642509e31b?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Beach pier">
+            </div>
+            
+            <!-- Grid Item 9 (Video) -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1561632669-7f55f7975606?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Concert video">
+                <div class="video-badge">
+                    <i class="fas fa-play text-xs"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

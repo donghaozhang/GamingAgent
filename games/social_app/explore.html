@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explore - Social App</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            padding: 0;
+            margin: 0;
+        }
+        .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: rgba(255, 255, 255, 0.95);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .search-bar {
+            background-color: #f1f1f1;
+            border-radius: 16px;
+        }
+        .grid-item {
+            position: relative;
+            overflow: hidden;
+            border-radius: 8px;
+            height: 0;
+            padding-bottom: 120%;
+        }
+        .grid-item img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .category-pills {
+            display: flex;
+            overflow-x: auto;
+            padding: 8px 0;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .category-pills::-webkit-scrollbar {
+            display: none;
+        }
+        .category-pill {
+            flex-shrink: 0;
+            padding: 6px 16px;
+            background-color: #f1f1f1;
+            border-radius: 18px;
+            margin-right: 8px;
+            font-size: 14px;
+            color: #555;
+            white-space: nowrap;
+        }
+        .category-pill.active {
+            background-color: #007aff;
+            color: white;
+        }
+        .item-details {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 8px;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+            color: white;
+            font-size: 12px;
+        }
+        .video-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-header px-4 py-3">
+        <div class="flex justify-between items-center mb-3">
+            <h1 class="text-xl font-bold">Explore</h1>
+            <button title="Notifications"><i class="fas fa-bell text-xl"></i></button>
+        </div>
+        
+        <div class="search-bar flex items-center px-3 py-2 mb-3">
+            <i class="fas fa-search text-gray-500 mr-2"></i>
+            <input type="text" placeholder="Search for people, topics, and tags" class="bg-transparent w-full text-sm focus:outline-none">
+        </div>
+        
+        <div class="category-pills">
+            <div class="category-pill active">All</div>
+            <div class="category-pill">Trending</div>
+            <div class="category-pill">Fashion</div>
+            <div class="category-pill">Travel</div>
+            <div class="category-pill">Food</div>
+            <div class="category-pill">Beauty</div>
+            <div class="category-pill">Technology</div>
+            <div class="category-pill">Gaming</div>
+        </div>
+    </div>
+
+    <div class="explore-grid p-2">
+        <div class="grid grid-cols-2 gap-2">
+            <!-- Grid Item 1 (Video) -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1532339142463-fd0a8979791a?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Beach sunset video">
+                <div class="video-badge">
+                    <i class="fas fa-play text-xs"></i>
+                </div>
+                <div class="item-details">
+                    <div class="text-sm font-semibold truncate">Sunset in Bali</div>
+                    <div class="flex items-center mt-1">
+                        <i class="fas fa-heart mr-1 text-xs"></i>
+                        <span>4.3k</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Grid Item 2 -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1519654793190-2e8a4806f1f2?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Coffee art">
+                <div class="item-details">
+                    <div class="text-sm font-semibold truncate">Morning Coffee Art</div>
+                    <div class="flex items-center mt-1">
+                        <i class="fas fa-heart mr-1 text-xs"></i>
+                        <span>2.1k</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Grid Item 3 -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1596360430284-6b56774ed3ec?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Gaming setup">
+                <div class="item-details">
+                    <div class="text-sm font-semibold truncate">Ultimate Gaming Setup</div>
+                    <div class="flex items-center mt-1">
+                        <i class="fas fa-heart mr-1 text-xs"></i>
+                        <span>8.9k</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Grid Item 4 (Video) -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1502989642968-94fbdc9eace4?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Dance video">
+                <div class="video-badge">
+                    <i class="fas fa-play text-xs"></i>
+                </div>
+                <div class="item-details">
+                    <div class="text-sm font-semibold truncate">New Dance Tutorial</div>
+                    <div class="flex items-center mt-1">
+                        <i class="fas fa-heart mr-1 text-xs"></i>
+                        <span>12.5k</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Grid Item 5 -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Fashion model">
+                <div class="item-details">
+                    <div class="text-sm font-semibold truncate">Summer Fashion Trends</div>
+                    <div class="flex items-center mt-1">
+                        <i class="fas fa-heart mr-1 text-xs"></i>
+                        <span>6.7k</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Grid Item 6 -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Healthy food">
+                <div class="item-details">
+                    <div class="text-sm font-semibold truncate">5-Minute Healthy Lunch</div>
+                    <div class="flex items-center mt-1">
+                        <i class="fas fa-heart mr-1 text-xs"></i>
+                        <span>3.2k</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Grid Item 7 (Video) -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1619789332426-2a54f4fae9fd?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Travel vlog">
+                <div class="video-badge">
+                    <i class="fas fa-play text-xs"></i>
+                </div>
+                <div class="item-details">
+                    <div class="text-sm font-semibold truncate">Tokyo Night Tour</div>
+                    <div class="flex items-center mt-1">
+                        <i class="fas fa-heart mr-1 text-xs"></i>
+                        <span>9.3k</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Grid Item 8 -->
+            <div class="grid-item">
+                <img src="https://images.unsplash.com/photo-1569411032431-07598b0012c2?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Interior design">
+                <div class="item-details">
+                    <div class="text-sm font-semibold truncate">Minimalist Home Design</div>
+                    <div class="flex items-center mt-1">
+                        <i class="fas fa-heart mr-1 text-xs"></i>
+                        <span>5.4k</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

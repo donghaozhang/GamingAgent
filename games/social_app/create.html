@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create - Social App</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            padding: 0;
+            margin: 0;
+        }
+        .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: rgba(255, 255, 255, 0.95);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .media-preview {
+            aspect-ratio: 1 / 1;
+            background-color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+        .media-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .filter-item {
+            width: 60px;
+            margin-right: 12px;
+            text-align: center;
+        }
+        .filter-thumb {
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 4px;
+        }
+        .filter-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .media-options {
+            height: 80px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .option-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 30px;
+            background-color: #f1f1f1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 8px;
+        }
+        .active-option {
+            background-color: #007aff;
+            color: white;
+        }
+        .tag-item {
+            background-color: #f1f1f1;
+            border-radius: 16px;
+            padding: 6px 12px;
+            margin-right: 8px;
+            font-size: 14px;
+            color: #333;
+            display: flex;
+            align-items: center;
+        }
+        .input-area {
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-header px-4 py-3 flex justify-between items-center">
+        <button title="Cancel" class="text-gray-500"><i class="fas fa-times text-xl"></i></button>
+        <h1 class="text-lg font-bold">Create New Post</h1>
+        <button title="Next" class="text-blue-500 font-semibold">Next</button>
+    </div>
+
+    <div class="media-preview bg-black">
+        <img src="https://images.pexels.com/photos/1212487/pexels-photo-1212487.jpeg?auto=compress&cs=tinysrgb&w=634" alt="Preview image">
+        <div class="absolute bottom-4 right-4 bg-black bg-opacity-60 text-white rounded-full w-10 h-10 flex items-center justify-center">
+            <i class="fas fa-camera text-lg"></i>
+        </div>
+    </div>
+
+    <div class="py-3 border-b border-gray-200">
+        <div class="flex overflow-x-auto px-4 py-2" style="scrollbar-width: none;">
+            <div class="filter-item">
+                <div class="filter-thumb">
+                    <img src="https://images.pexels.com/photos/1212487/pexels-photo-1212487.jpeg?auto=compress&cs=tinysrgb&w=100" alt="Normal">
+                </div>
+                <div class="text-xs mt-1">Normal</div>
+            </div>
+            <div class="filter-item">
+                <div class="filter-thumb" style="filter: brightness(1.2) contrast(1.1);">
+                    <img src="https://images.pexels.com/photos/1212487/pexels-photo-1212487.jpeg?auto=compress&cs=tinysrgb&w=100" alt="Vivid">
+                </div>
+                <div class="text-xs mt-1">Vivid</div>
+            </div>
+            <div class="filter-item">
+                <div class="filter-thumb" style="filter: grayscale(1);">
+                    <img src="https://images.pexels.com/photos/1212487/pexels-photo-1212487.jpeg?auto=compress&cs=tinysrgb&w=100" alt="B&W">
+                </div>
+                <div class="text-xs mt-1">B&W</div>
+            </div>
+            <div class="filter-item">
+                <div class="filter-thumb" style="filter: sepia(0.5);">
+                    <img src="https://images.pexels.com/photos/1212487/pexels-photo-1212487.jpeg?auto=compress&cs=tinysrgb&w=100" alt="Retro">
+                </div>
+                <div class="text-xs mt-1">Retro</div>
+            </div>
+            <div class="filter-item">
+                <div class="filter-thumb" style="filter: hue-rotate(40deg);">
+                    <img src="https://images.pexels.com/photos/1212487/pexels-photo-1212487.jpeg?auto=compress&cs=tinysrgb&w=100" alt="Teal">
+                </div>
+                <div class="text-xs mt-1">Teal</div>
+            </div>
+            <div class="filter-item">
+                <div class="filter-thumb" style="filter: saturate(2);">
+                    <img src="https://images.pexels.com/photos/1212487/pexels-photo-1212487.jpeg?auto=compress&cs=tinysrgb&w=100" alt="Vibrant">
+                </div>
+                <div class="text-xs mt-1">Vibrant</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="media-options flex items-center justify-around">
+        <div class="option-btn active-option">
+            <i class="fas fa-image text-lg"></i>
+        </div>
+        <div class="option-btn">
+            <i class="fas fa-video text-lg"></i>
+        </div>
+        <div class="option-btn">
+            <i class="fas fa-clone text-lg"></i>
+        </div>
+        <div class="option-btn">
+            <i class="fas fa-magic text-lg"></i>
+        </div>
+    </div>
+    
+    <div class="p-4">
+        <div class="input-area p-3 mb-4">
+            <textarea class="w-full border-none outline-none text-sm" rows="3" placeholder="Write a caption..."></textarea>
+            <div class="flex items-center text-gray-500 text-sm mt-2">
+                <i class="fas fa-map-marker-alt mr-2"></i>
+                <span>Add location</span>
+            </div>
+        </div>
+        
+        <div class="mb-4">
+            <h3 class="text-sm font-medium mb-2">Add tags</h3>
+            <div class="flex flex-wrap">
+                <div class="tag-item">
+                    <span>#photography</span>
+                    <i class="fas fa-times ml-2 text-xs"></i>
+                </div>
+                <div class="tag-item">
+                    <span>#travel</span>
+                    <i class="fas fa-times ml-2 text-xs"></i>
+                </div>
+                <div class="tag-item flex items-center text-blue-500">
+                    <i class="fas fa-plus mr-1 text-xs"></i>
+                    <span>Add</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="flex justify-between items-center text-sm">
+            <div>Also post to:</div>
+            <div class="flex items-center">
+                <label for="toggle-instagram" class="mr-4">Instagram</label>
+                <div class="relative inline-block w-10 mr-2 align-middle select-none">
+                    <input type="checkbox" id="toggle-instagram" class="checked:bg-blue-500 outline-none focus:outline-none right-4 checked:right-0 duration-200 ease-in absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" checked aria-label="Post to Instagram">
+                    <label for="toggle-instagram" class="block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

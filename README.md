@@ -10,10 +10,10 @@ The system includes multiple AI iterator files that can be used to control Tetri
 
 Below is a visual comparison of different AI models playing Tetris:
 
-| Claude Sonnet 3.7 | Gemini Flash 2.0 | OpenAI o3-mini | 
-|:----------:|:----------:|:--------------:|
-| ![Claude playing Tetris](assets/tetris/claude.gif) | ![Gemini playing Tetris](assets/tetris/gemini.gif) | ![OpenAI playing Tetris](assets/tetris/openai.gif) | 
-| *Claude's vision-based analysis* | *Gemini's approach to Tetris* | *OpenAI's decision making* | 
+| Claude Sonnet 3.7 | Gemini Flash 2.0 | OpenAI o3-mini | Qwen 2.5 VL 72B Instruct|
+|:----------:|:----------:|:--------------:|:--------------:|  
+| ![Claude playing Tetris](assets/tetris/claude.gif) | ![Gemini playing Tetris](assets/tetris/gemini.gif) | ![OpenAI playing Tetris](assets/tetris/openai.gif) | ![Qwen playing Tetris](assets/tetris/qwenvl.gif) |
+| *Claude's vision-based analysis* | *Gemini's approach to Tetris* | *OpenAI's decision making* | *Qwen's reasoning* |
 
 > Note: Some GIFs may be placeholders until recordings for all models are available.
 

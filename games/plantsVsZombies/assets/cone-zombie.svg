@@ -1,0 +1,37 @@
+<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+  <!-- Head -->
+  <circle cx="50" cy="30" r="20" fill="#A9C67A"/>
+  
+  <!-- Eyes -->
+  <circle cx="42" cy="25" r="5" fill="white"/>
+  <circle cx="58" cy="25" r="5" fill="white"/>
+  <circle cx="42" cy="25" r="2" fill="red"/>
+  <circle cx="58" cy="25" r="2" fill="red"/>
+  
+  <!-- Mouth -->
+  <path d="M 35,35 C 45,45 55,45 65,35" fill="none" stroke="black" stroke-width="2"/>
+  
+  <!-- Traffic Cone -->
+  <path d="M 30,10 L 50,0 L 70,10 Z" fill="#FFA500"/>
+  <path d="M 30,10 L 70,10 L 65,25 L 35,25 Z" fill="#FFA500"/>
+  <ellipse cx="50" cy="10" rx="20" ry="3" fill="#FF8C00"/>
+  <ellipse cx="50" cy="25" rx="15" ry="2" fill="#FF8C00"/>
+  <path d="M 35,15 L 65,15" stroke="#FF8C00" stroke-width="2"/>
+  <path d="M 37,20 L 63,20" stroke="#FF8C00" stroke-width="2"/>
+  
+  <!-- Body -->
+  <rect x="40" y="50" width="20" height="30" fill="#663366"/>
+  
+  <!-- Arms -->
+  <rect x="20" y="50" width="20" height="5" fill="#A9C67A"/>
+  <rect x="60" y="50" width="20" height="5" fill="#A9C67A"/>
+  
+  <!-- Legs -->
+  <rect x="40" y="80" width="8" height="15" fill="#401934"/>
+  <rect x="52" y="80" width="8" height="15" fill="#401934"/>
+  
+  <!-- Details -->
+  <line x1="45" y1="60" x2="55" y2="60" stroke="black" stroke-width="2"/>
+  <line x1="45" y1="65" x2="55" y2="65" stroke="black" stroke-width="2"/>
+  <line x1="45" y1="70" x2="55" y2="70" stroke="black" stroke-width="2"/>
+</svg> 

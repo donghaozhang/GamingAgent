@@ -1,0 +1,21 @@
+<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+  <!-- Stem -->
+  <rect x="45" y="50" width="10" height="40" fill="#0C8A15"/>
+  
+  <!-- Head -->
+  <circle cx="50" cy="40" r="25" fill="#0C8A15"/>
+  
+  <!-- Eyes -->
+  <circle cx="40" cy="35" r="5" fill="white"/>
+  <circle cx="60" cy="35" r="5" fill="white"/>
+  <circle cx="40" cy="35" r="2" fill="black"/>
+  <circle cx="60" cy="35" r="2" fill="black"/>
+  
+  <!-- Mouth / Shooter -->
+  <rect x="45" y="45" width="10" height="15" fill="#0C6A10"/>
+  <ellipse cx="50" cy="60" rx="10" ry="5" fill="#0C6A10"/>
+  
+  <!-- Leaves -->
+  <path d="M 45,70 C 25,60 15,80 25,90" fill="#0C8A15"/>
+  <path d="M 55,70 C 75,60 85,80 75,90" fill="#0C8A15"/>
+</svg> 

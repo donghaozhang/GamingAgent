@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social App Prototype</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            background-color: #f0f2f5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        .phone-container {
+            width: 375px;
+            height: 812px;
+            background-color: white;
+            border-radius: 40px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        .notch {
+            position: absolute;
+            width: 210px;
+            height: 30px;
+            background-color: #000;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            border-bottom-left-radius: 18px;
+            border-bottom-right-radius: 18px;
+            z-index: 20;
+        }
+        .status-bar {
+            height: 44px;
+            background-color: #000;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            color: white;
+            align-items: center;
+            font-size: 14px;
+            z-index: 10;
+        }
+        .app-frame {
+            width: 100%;
+            height: calc(100% - 44px - 83px);
+            border: none;
+        }
+        .tab-bar {
+            height: 83px;
+            background-color: rgba(255, 255, 255, 0.9);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+        .tab {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #8e8e93;
+            font-size: 10px;
+            cursor: pointer;
+        }
+        .tab.active {
+            color: #007aff;
+        }
+        .tab i {
+            font-size: 28px;
+            margin-bottom: 4px;
+        }
+        .screens-menu {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .screen-btn {
+            margin: 5px;
+            padding: 8px 16px;
+            background-color: #007aff;
+            color: white;
+            border-radius: 20px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .screen-btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-6">
+    <h1 class="text-3xl font-bold mb-6">Social App Prototype</h1>
+    
+    <div class="screens-menu">
+        <div class="screen-btn" onclick="changeScreen('home.html')">Home</div>
+        <div class="screen-btn" onclick="changeScreen('explore.html')">Explore</div>
+        <div class="screen-btn" onclick="changeScreen('create.html')">Create</div>
+        <div class="screen-btn" onclick="changeScreen('notifications.html')">Notifications</div>
+        <div class="screen-btn" onclick="changeScreen('profile.html')">Profile</div>
+    </div>
+    
+    <div class="phone-container">
+        <div class="notch"></div>
+        <div class="status-bar">
+            <span>9:41</span>
+            <div>
+                <span class="mr-1"><i class="fas fa-signal"></i></span>
+                <span class="mr-1"><i class="fas fa-wifi"></i></span>
+                <span><i class="fas fa-battery-full"></i></span>
+            </div>
+        </div>
+        <iframe id="appFrame" class="app-frame" src="home.html"></iframe>
+        <div class="tab-bar">
+            <div class="tab active" onclick="changeScreen('home.html')">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
+            </div>
+            <div class="tab" onclick="changeScreen('explore.html')">
+                <i class="fas fa-compass"></i>
+                <span>Explore</span>
+            </div>
+            <div class="tab" onclick="changeScreen('create.html')">
+                <i class="fas fa-plus-square"></i>
+                <span>Create</span>
+            </div>
+            <div class="tab" onclick="changeScreen('notifications.html')">
+                <i class="fas fa-bell"></i>
+                <span>Alerts</span>
+            </div>
+            <div class="tab" onclick="changeScreen('profile.html')">
+                <i class="fas fa-user"></i>
+                <span>Profile</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function changeScreen(screenUrl) {
+            document.getElementById('appFrame').src = screenUrl;
+            
+            // Update active tab
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            const activeTab = Array.from(tabs).find(tab => {
+                return tab.getAttribute('onclick').includes(screenUrl);
+            });
+            
+            if (activeTab) {
+                activeTab.classList.add('active');
+            }
+        }
+    </script>
+</body>
+</html> 

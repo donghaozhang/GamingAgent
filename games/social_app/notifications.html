@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notifications - Social App</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            padding: 0;
+            margin: 0;
+        }
+        .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: rgba(255, 255, 255, 0.95);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .avatar-sm {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .notification-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0f0f0;
+            background-color: white;
+        }
+        .notification-item:hover {
+            background-color: #f8f9fa;
+        }
+        .notification-time {
+            color: #8e8e93;
+            font-size: 12px;
+        }
+        .notification-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: auto;
+        }
+        .like-icon {
+            background-color: #ffecf2;
+            color: #ff2d55;
+        }
+        .comment-icon {
+            background-color: #e5f7ff;
+            color: #007aff;
+        }
+        .follow-icon {
+            background-color: #e7faf0;
+            color: #34c759;
+        }
+        .mention-icon {
+            background-color: #fff6e5;
+            color: #ff9500;
+        }
+        .category-header {
+            font-weight: 600;
+            color: #8e8e93;
+            font-size: 14px;
+            padding: 16px 16px 8px;
+            background-color: #f8f9fa;
+        }
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
+            background-color: #ff2d55;
+            margin-left: 8px;
+        }
+        .segment-control {
+            display: flex;
+            background-color: #f1f1f1;
+            border-radius: 8px;
+            padding: 2px;
+            margin: 8px 16px;
+        }
+        .segment-btn {
+            flex: 1;
+            text-align: center;
+            padding: 8px 0;
+            font-size: 14px;
+            border-radius: 6px;
+        }
+        .segment-btn.active {
+            background-color: white;
+            font-weight: 600;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-header px-4 py-3">
+        <h1 class="text-xl font-bold mb-3">Notifications</h1>
+        
+        <div class="segment-control">
+            <div class="segment-btn active">All</div>
+            <div class="segment-btn">Likes</div>
+            <div class="segment-btn">Comments</div>
+            <div class="segment-btn">Mentions</div>
+        </div>
+    </div>
+
+    <div class="notifications-container">
+        <div class="category-header">Today</div>
+        
+        <!-- Like notification -->
+        <div class="notification-item flex items-center">
+            <img src="https://images.unsplash.com/photo-1639149888905-fb39731f2e6c?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80" class="avatar mr-3" alt="User avatar">
+            <div class="flex-1">
+                <div class="flex items-center">
+                    <div class="font-medium">Emma Wilson</div>
+                    <div class="dot"></div>
+                </div>
+                <div class="text-sm">Liked your post "Morning coffee vibes ☕️"</div>
+                <div class="notification-time">2 hours ago</div>
+            </div>
+            <div class="notification-icon like-icon">
+                <i class="fas fa-heart"></i>
+            </div>
+        </div>
+        
+        <!-- Comment notification -->
+        <div class="notification-item flex items-center">
+            <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80" class="avatar mr-3" alt="User avatar">
+            <div class="flex-1">
+                <div class="font-medium">Michael Chen</div>
+                <div class="text-sm">Commented: "Amazing shot! What camera did you use?"</div>
+                <div class="notification-time">3 hours ago</div>
+            </div>
+            <div class="notification-icon comment-icon">
+                <i class="fas fa-comment"></i>
+            </div>
+        </div>
+        
+        <!-- Follow notification -->
+        <div class="notification-item flex items-center">
+            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80" class="avatar mr-3" alt="User avatar">
+            <div class="flex-1">
+                <div class="flex items-center">
+                    <div class="font-medium">Sophia Lee</div>
+                    <div class="dot"></div>
+                </div>
+                <div class="text-sm">Started following you</div>
+                <div class="notification-time">5 hours ago</div>
+            </div>
+            <button class="px-4 py-1 bg-blue-500 text-white text-sm rounded-full font-medium">Follow</button>
+        </div>
+        
+        <div class="category-header">Yesterday</div>
+        
+        <!-- Mention notification -->
+        <div class="notification-item flex items-center">
+            <img src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80" class="avatar mr-3" alt="User avatar">
+            <div class="flex-1">
+                <div class="font-medium">Marcus Wong</div>
+                <div class="text-sm">Mentioned you in a comment: "You need to check out @yourusername's profile!"</div>
+                <div class="notification-time">Yesterday, 2:45 PM</div>
+            </div>
+            <div class="notification-icon mention-icon">
+                <i class="fas fa-at"></i>
+            </div>
+        </div>
+        
+        <!-- Like notification with multiple users -->
+        <div class="notification-item flex items-center">
+            <div class="relative mr-3">
+                <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80" class="avatar" alt="User avatar">
+                <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80" class="avatar-sm absolute -bottom-1 -right-1 border-2 border-white" alt="Second user avatar">
+            </div>
+            <div class="flex-1">
+                <div class="font-medium">Anna Park and 3 others</div>
+                <div class="text-sm">Liked your video "Downtown night walk 🌃"</div>
+                <div class="notification-time">Yesterday, 9:30 AM</div>
+            </div>
+            <div class="notification-icon like-icon">
+                <i class="fas fa-heart"></i>
+            </div>
+        </div>
+        
+        <div class="category-header">This Week</div>
+        
+        <!-- New follower suggestion -->
+        <div class="notification-item flex items-center">
+            <img src="https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80" class="avatar mr-3" alt="User avatar">
+            <div class="flex-1">
+                <div class="font-medium">James Wilson</div>
+                <div class="text-sm">You might know each other. Suggested based on mutual connections.</div>
+                <div class="notification-time">2 days ago</div>
+            </div>
+            <button class="px-4 py-1 bg-blue-500 text-white text-sm rounded-full font-medium">Follow</button>
+        </div>
+        
+        <!-- Comment notification -->
+        <div class="notification-item flex items-center">
+            <img src="https://images.unsplash.com/photo-1580489944761-15a19d654956?ixlib=rb-1.2.1&auto=format&fit=crop&w=100&q=80" class="avatar mr-3" alt="User avatar">
+            <div class="flex-1">
+                <div class="font-medium">Olivia Martinez</div>
+                <div class="text-sm">Replied to your comment: "Yes, I totally agree with you!"</div>
+                <div class="notification-time">3 days ago</div>
+            </div>
+            <div class="notification-icon comment-icon">
+                <i class="fas fa-comment"></i>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 
